@@ -160,6 +160,9 @@ FIG_3D_TRAJ = os.path.join(FIG_DIR, "fig_3d_traj.png")
 RESULT_FIGS = [FIG_STAGE3_PIE, FIG_HOUR_LINE, FIG_PURPOSE_BAR,
                FIG_MODE_BAR, FIG_HEATMAP, FIG_3D_TRAJ]
 
+# 早晚高峰底纹（课时 33 的常识区间，只用于图2 标注，不参与任何判定）
+PEAK_HOURS = [(7, 9, "早高峰"), (17, 19, "晚高峰")]
+
 # 清洗结果列（课时 29：严格固定 6 列，下游 stage1 依赖）
 CLEANED_COLS = ["imsi", "time", "lac_id", "cell_id", "lon", "lat"]
 

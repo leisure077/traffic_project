@@ -80,6 +80,10 @@ def plot_hour_line(label_df):
     ax2.set_xticks(hours)
     ax2.legend(loc="upper left")
     ax2.grid(alpha=.3)
+    for start, end, name in config.PEAK_HOURS:         # 底纹只是标注，不参与判定
+        ax2.axvspan(start, end, color="#1f77b4", alpha=.10)
+        ax2.text((start + end) / 2.0, ax2.get_ylim()[1] * .93, name,
+                 ha="center", fontsize=8, color="#555555")
 
     fig.suptitle("24 小时出行 / 驻留分布（上下两格各自量级，只比形状不比高低）")
     fig.tight_layout(rect=(0, 0, 1, 0.97))
