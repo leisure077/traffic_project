@@ -18,7 +18,7 @@ import config
 import data_clean
 from purpose import decide_purpose
 from tr_stage2 import kmeans
-from utils import haversine, is_night, parse_time
+from utils import haversine, is_night, parse_time, project_to_meters
 
 # 太原街 → 中街，沈阳两条商业街的真实坐标，实际约 2.1 km
 TYJ = (123.4119, 41.8052)
@@ -84,11 +84,11 @@ class TestTime(unittest.TestCase):
 
 class TestKmeans(unittest.TestCase):
     def test_two_blobs_separate(self):
-        """课时 36 §五：两团明显分离的点必须分成两簇。"""
+        """课时 36 §五：两团明显分离的点必须分成两簇。走生产路径，先投影成米。"""
         np.random.seed(0)
         pts = np.vstack([np.random.normal([123.40, 41.80], 0.005, (50, 2)),
                          np.random.normal([123.60, 41.95], 0.005, (50, 2))])
-        labels, centers = kmeans(pts, 2)
+        labels, centers = kmeans(project_to_meters(pts[:, 0], pts[:, 1]), 2)
         self.assertEqual(len(set(labels.tolist())), 2)
         same_block = labels[:50] == labels[49]
         self.assertTrue(same_block.all() or (~same_block).all())

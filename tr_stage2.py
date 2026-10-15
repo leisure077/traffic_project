@@ -15,17 +15,20 @@ tr_stage2.py —— 出行/驻留识别·阶段2：手写 K-Means 空间聚类�
 聚类只在同一个用户的点之间进行（课时 38）——不同用户的点不该聚到一起。
 逐用户聚类前 np.random.seed(RANDOM_STATE) 一次，保证结果可复现。
 
+喂给 kmeans 的坐标先经 utils.project_to_meters 换算成米：欧氏距离直接吃经纬度
+等于把地图横向压扁约 25%（沈阳纬度下 1° 经度≈83km、1° 纬度≈111km）。
+
 `python tr_stage2.py` 单独运行本模块（需先跑过 tr_stage1.py）。
 """
 import numpy as np
 import pandas as pd
 
 import config
-from utils import log, log_step, pairwise_euclidean, read_csv, save_csv, Timer
+from utils import log, log_step, pairwise_euclidean, project_to_meters, read_csv, save_csv, Timer
 
 
 def kmeans(X, k, max_iter=None, tol=None):
-    """手写 K-Means（课时 36）。X 形状 (n,2) 的 lon/lat，返回 (labels, centers)。"""
+    """手写 K-Means（课时 36）。X 形状 (n,2) 的米制平面坐标，返回 (labels, centers)。"""
     max_iter = config.KM_MAX_ITER if max_iter is None else max_iter
     tol = config.KM_TOL if tol is None else tol
     n = len(X)
@@ -46,7 +49,7 @@ def kmeans(X, k, max_iter=None, tol=None):
 
         shift = np.sqrt(((new_centers - centers) ** 2).sum())
         labels, centers = new_labels, new_centers
-        if shift < tol:                         # tol=1e-6 在经纬度尺度下已足够
+        if shift < tol:                         # 中心位移不足 0.1 米即视为收敛
             break
     return labels, centers
 
@@ -127,7 +130,8 @@ def stage2_analysis(df=None):
     np.random.seed(config.RANDOM_STATE)         # 课时 36：固定种子，簇结果可复现
     out_parts, chosen_ks = [], []
     for imsi, g in df.groupby("imsi"):
-        X = g[["lon", "lat"]].to_numpy(dtype=float)
+        # 先投影成米再聚类：欧氏距离直接吃经纬度会把地图横向压扁 25%
+        X = project_to_meters(g["lon"], g["lat"])
         labels, best_k = choose_best_k(X)
 
         g = g.copy()

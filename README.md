@@ -90,7 +90,8 @@ cleaned_data.csv                        imsi,time,lac_id,cell_id,lon,lat
    │  ② 阶段1：删低频点（同用户同坐标<4次）→ 切连续段 → 相邻点速度>8km/h
    ▼
 stage1_travel_points.csv                + speed（高召回粗筛，宁可多留）
-   │  ③ 阶段2：逐用户手写 K-Means，K=2~10 用「轮廓系数 + 0.1×邓恩指数」选优
+   │  ③ 阶段2：经纬度先投影成米（否则欧氏距离把地图横向压扁 25%）→ 逐用户手写 K-Means，
+   │           K=2~10 用「轮廓系数 + 0.1×邓恩指数」选优
    ▼
 stage2_cluster.csv                      + cluster, is_single_cluster
    │  ④ 阶段3：簇心到首/中/尾三点 <1000m 且 首末跨度 <2h → 驻留，否则出行；

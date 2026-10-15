@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config                      # noqa: E402
 import tr_stage2 as s2             # noqa: E402
-from utils import haversine, log   # noqa: E402
+from utils import haversine, log, project_to_meters   # noqa: E402
 
 ID_DTYPE = {"imsi": str, "time": str, "lac_id": str, "cell_id": str}
 
@@ -47,14 +47,15 @@ def check_kmeans_blobs():
                         np.random.normal(41.90, 0.01, 200),
                         np.random.normal(41.70, 0.01, 200)]),
     ])
-    labels, centers = s2.kmeans(pts, 3)
+    P = project_to_meters(pts[:, 0], pts[:, 1])      # 与生产路径一致：先投影成米再聚类
+    labels, centers = s2.kmeans(P, 3)
     # 簇编号是任意的，按「多数投票」把预测映射回真值再比对
     mapping = {c: int(pd.Series(truth[labels == c]).value_counts().idxmax())
                for c in np.unique(labels)}
     acc = float(np.mean([mapping[l] == t for l, t in zip(labels, truth)]))
-    sse = float(((pts - centers[labels]) ** 2).sum())
+    sse = float(((P - centers[labels]) ** 2).sum())
     ok = acc > 0.99 and len(centers) == 3
-    log(f"[1] 手写 kmeans 三团人造数据：准确率={acc:.4f} ｜ SSE={sse:.4f} ｜ "
+    log(f"[1] 手写 kmeans 三团人造数据：准确率={acc:.4f} ｜ SSE={sse:,.0f} 米² ｜ "
         f"中心数={len(centers)} → {'PASS' if ok else 'FAIL'}")
     return ok
 
@@ -165,7 +166,8 @@ def check_reproducibility():
     """同一种子下对同一用户跑两遍 choose_best_k，标签与最优 K 必须逐位相同。"""
     cluster = _load(config.STAGE2_CLUSTER_FILE)
     user = cluster.groupby("imsi").size().sort_values(ascending=False).index[3]
-    X = cluster[cluster["imsi"] == user][["lon", "lat"]].to_numpy(float)
+    xy = cluster[cluster["imsi"] == user][["lon", "lat"]].to_numpy(float)
+    X = project_to_meters(xy[:, 0], xy[:, 1])        # 走与 stage2 相同的投影路径
     np.random.seed(config.RANDOM_STATE)
     a, ka = s2.choose_best_k(X)
     np.random.seed(config.RANDOM_STATE)

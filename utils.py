@@ -36,8 +36,21 @@ def haversine(lon1, lat1, lon2, lat2, unit="km"):
     return km * 1000.0 if unit == "m" else km
 
 
+def project_to_meters(lon, lat):
+    """经纬度（度）→ 等距圆柱平面坐标（米），返回 (n,2)。
+
+    K-Means 用的是欧氏距离，直接喂经纬度等于把地图横向压扁：在沈阳这个纬度上
+    1° 纬度约 111 km，而 1° 经度只有约 83 km，同样隔 500 米的两座基站，
+    东西摆的和南北摆的会被算成差一倍的距离。先换算成米再聚类才说得通。
+    """
+    m_per_deg = EARTH_R_KM * 1000.0 * np.pi / 180.0
+    x = np.asarray(lon, dtype=float) * m_per_deg * np.cos(np.radians(lat))
+    y = np.asarray(lat, dtype=float) * m_per_deg
+    return np.column_stack([x, y])
+
+
 def pairwise_euclidean(X):
-    """点集自身的欧氏距离矩阵（课时 37 轮廓/邓恩指数的输入，经纬度平面近似）。"""
+    """点集自身的欧氏距离矩阵（课时 37 轮廓/邓恩指数的输入）。X 需已是米制平面坐标。"""
     diff = X[:, None, :] - X[None, :, :]
     return np.sqrt((diff ** 2).sum(axis=-1))
 
