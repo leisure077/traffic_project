@@ -55,25 +55,34 @@ def plot_stage3_pie(label_df):
 
 
 def plot_hour_line(label_df):
-    """图2：24 小时双折线。reindex(range(24)) 保证没有点的小时也显示为 0。"""
+    """图2：24 小时上下两个子图。reindex(range(24)) 保证没有点的小时也显示为 0。
+
+    驻留量级是出行的二十多倍，放进同一根轴出行会被压成贴底线；
+    用左右双轴并排则两条线看起来可比，读者会按交叉点误读「什么时候出行超过驻留」。
+    所以拆成上下两格、各自量级、共用横轴：形状可比，高度不可比。
+    """
     tmp = pd.DataFrame({"hour": _hour_of(label_df["time"]), "label": label_df["label"]}).dropna()
     hours = list(range(24))
     stay = tmp[tmp["label"] == 0].groupby("hour").size().reindex(hours, fill_value=0)
     travel = tmp[tmp["label"] == 1].groupby("hour").size().reindex(hours, fill_value=0)
 
-    fig, ax = plt.subplots(figsize=(10, 5))
+    fig, (ax, ax2) = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
     ax.plot(hours, stay.values, marker="o", color=GREEN, label="驻留点")
     ax.fill_between(hours, stay.values, alpha=.12, color=GREEN)
-    ax.set_xlabel("小时")
     ax.set_ylabel("驻留点数")
-    ax.set_xticks(hours)
-    ax2 = ax.twinx()
+    ax.legend(loc="upper left")
+    ax.grid(alpha=.3)
+
     ax2.plot(hours, travel.values, marker="s", color=RED, label="出行点")
+    ax2.fill_between(hours, travel.values, alpha=.12, color=RED)
     ax2.set_ylabel("出行点数")
-    ax.set_title("24 小时出行 / 驻留分布")
-    h1, l1 = ax.get_legend_handles_labels()
-    h2, l2 = ax2.get_legend_handles_labels()
-    ax.legend(h1 + h2, l1 + l2, loc="upper left")
+    ax2.set_xlabel("小时")
+    ax2.set_xticks(hours)
+    ax2.legend(loc="upper left")
+    ax2.grid(alpha=.3)
+
+    fig.suptitle("24 小时出行 / 驻留分布（上下两格各自量级，只比形状不比高低）")
+    fig.tight_layout(rect=(0, 0, 1, 0.97))
     _save(fig, config.FIG_HOUR_LINE)
 
 
