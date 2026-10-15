@@ -123,7 +123,12 @@ def plot_mode_bar(mode_df):
 
 
 def plot_heatmap(heat_df):
-    """图5：Top10 商圈 × 24 小时热力矩阵。窗口计数取该小时内的峰值。"""
+    """图5：Top10 商圈 × 24 小时热力矩阵。窗口计数取该小时内的峰值。
+
+    色标按行各自归一化：四个商圈量级差到两三个数量级（太原街峰值 2570、棋盘山只有 10），
+    共用一套色标会把小的那几行整体冲成同一色，日内起伏完全看不出来。
+    每行右侧标出该行真实峰值，绝对量级信息不丢。
+    """
     t = pd.to_datetime(heat_df["time"])
     df = heat_df.assign(hour=t.dt.hour).dropna(subset=["hour"])
     pivot = df.groupby(["biz_name", "hour"])["count"].max().unstack(fill_value=0)
@@ -131,13 +136,20 @@ def plot_heatmap(heat_df):
     top = pivot.max(axis=1).sort_values(ascending=False).head(HEATMAP_TOP)
     M = pivot.loc[top.index]
 
+    values = M.to_numpy(dtype=float)
+    row_max = values.max(axis=1)
+    rel = values / np.maximum(row_max, 1)[:, None]        # 全零行保持 0，不出 NaN
+
     fig, ax = plt.subplots(figsize=(11, 1 + 1.1 * len(M)))
-    im = ax.imshow(M.values, aspect="auto", cmap="YlOrRd")
+    im = ax.imshow(rel, aspect="auto", cmap="YlOrRd", vmin=0, vmax=1)
     ax.set_xticks(range(24), [f"{h}时" for h in range(24)], fontsize=8, rotation=60)
     ax.set_yticks(range(len(M)), M.index)
+    for i, v in enumerate(row_max):
+        ax.text(23.7, i, f"峰值 {int(v)}", va="center", fontsize=8)
+    ax.set_xlim(-0.5, 26.5)
     ax.set_xlabel("小时")
-    ax.set_title(f"商圈 × 24 小时人流热力（{config.HEATMAP_WINDOW_SIZE} 分钟窗口峰值）")
-    fig.colorbar(im, ax=ax, label=f"{config.HEATMAP_WINDOW_SIZE}分钟窗口人流峰值")
+    ax.set_title(f"商圈 × 24 小时人流热力（{config.HEATMAP_WINDOW_SIZE} 分钟窗口峰值，色标按行归一化）")
+    fig.colorbar(im, ax=ax, label="占本商圈当日峰值比例", pad=0.02)
     _save(fig, config.FIG_HEATMAP)
 
 

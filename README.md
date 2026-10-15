@@ -129,7 +129,7 @@ stage3_label.csv                        全量点 label
 | `figures/fig_hour_line.png` | 逐小时出行/驻留双轴曲线 |
 | `figures/fig_purpose_bar.png` | 出行目的分布（数量 + 占比） |
 | `figures/fig_mode_bar.png` | 出行方式分布（数量 + 占比） |
-| `figures/fig_heatmap.png` | 命中商圈 × 24 小时热力矩阵（本次 4 个，见下方口径说明） |
+| `figures/fig_heatmap.png` | 命中商圈 × 24 小时热力矩阵（本次 4 个，见下方口径说明；色标按行归一化，行末标真实峰值） |
 | `figures/fig_3d_traj.png` | Top5 用户出行轨迹 3D 视图（z 轴 = 一天中的时刻） |
 
 结果 CSV 一律 `utf-8-sig` 输出，Excel 双击打开中文不乱码。
