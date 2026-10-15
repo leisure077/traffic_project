@@ -6,10 +6,10 @@ visualize.py —— 六张结果可视化（课时 55~56）
 生成六张必交 PNG，外加两张附加 PNG。
 
   1 fig_stage3_pie    出行/驻留占比      —— 一天里移动点和停留点各占多少
-  2 fig_hour_line     24 小时上下两格    —— 出行/驻留随时间如何变化（含早晚高峰底纹）
+  2 fig_hour_line     24 小时同轴叠画    —— 出行/驻留随时间如何变化（含早晚高峰底纹）
   3 fig_purpose_bar   出行目的柱状       —— 停留都在干什么
   4 fig_mode_bar      出行方式柱状       —— 出行都怎么去
-  5 fig_heatmap       商圈×24h 热力矩阵  —— 哪里、什么时间最拥挤（色标按行归一化）
+  5 fig_heatmap       商圈×24h 热力矩阵  —— 哪里、什么时间最拥挤（按绝对人次上色）
   6 fig_3d_traj       Top5 用户 3D 轨迹  —— 个体一天的时空轨迹长什么样
 
   + fig_stage2_clusters 某用户的簇划分 + 阶段3 判定 —— 六张必交图里唯一没覆盖的
@@ -36,6 +36,8 @@ PURPOSE_COLORS = {"居住": BLUE, "购物": ORANGE, "旅游": PURPLE, "其他": 
 MODE_COLORS = {"地铁": RED, "公交": BLUE, "小汽车": ORANGE, "其他": GRAY}
 SCATTER_3D_TOP = 5          # 3D 轨迹画点数最多的前 5 个用户
 HEATMAP_TOP = 10            # 热力矩阵取峰值最高的前 10 个商圈
+# 3D 轨迹的连线配色：五个人的线要能一眼分开，且不能和「红=出行、绿=驻留」撞色
+USER_COLORS = ["#9467bd", "#ff7f0e", "#1f77b4", "#8c564b", "#17becf"]
 
 
 def _save(fig, path):
@@ -60,38 +62,53 @@ def plot_stage3_pie(label_df):
 
 
 def plot_hour_line(label_df):
-    """图2：24 小时上下两个子图。reindex(range(24)) 保证没有点的小时也显示为 0。
+    """图2：24 小时出行/驻留叠在同一张图上（对齐讲义示例的排版）。
 
-    驻留量级是出行的二十多倍，放进同一根轴出行会被压成贴底线；
-    用左右双轴并排则两条线看起来可比，读者会按交叉点误读「什么时候出行超过驻留」。
-    所以拆成上下两格、各自量级、共用横轴：形状可比，高度不可比。
+    我们的出行点只有驻留点的二十几分之一（45 : 1052），直接共轴会把红线压成
+    贴在横轴上的一条平线，看着像画坏了。所以共轴保留示例的样子，
+    另在右上角补一个小格把红线单独放大——小格只换纵轴刻度，不改任何数值。
+    左右双轴（两条线各自一套刻度）不用：那会让两条线看起来可比，
+    读者会按交叉点误读「什么时候出行超过了驻留」。
     """
     tmp = pd.DataFrame({"hour": _hour_of(label_df["time"]), "label": label_df["label"]}).dropna()
     hours = list(range(24))
     stay = tmp[tmp["label"] == 0].groupby("hour").size().reindex(hours, fill_value=0)
     travel = tmp[tmp["label"] == 1].groupby("hour").size().reindex(hours, fill_value=0)
 
-    fig, (ax, ax2) = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
+    fig, ax = plt.subplots(figsize=(11, 6.5))
+    for start, end, name in config.PEAK_HOURS:         # 底纹只是标注，不参与判定
+        ax.axvspan(start, end, color="#1f77b4", alpha=.10)
     ax.plot(hours, stay.values, marker="o", color=GREEN, label="驻留点")
-    ax.fill_between(hours, stay.values, alpha=.12, color=GREEN)
-    ax.set_ylabel("驻留点数")
+    ax.plot(hours, travel.values, marker="^", color=RED, label="出行点")
+    ax.set_xlabel("小时")
+    ax.set_ylabel("点数")
+    ax.set_xticks(hours)
+    ax.set_ylim(0, stay.max() * 1.15)
     ax.legend(loc="upper left")
     ax.grid(alpha=.3)
 
-    ax2.plot(hours, travel.values, marker="s", color=RED, label="出行点")
-    ax2.fill_between(hours, travel.values, alpha=.12, color=RED)
-    ax2.set_ylabel("出行点数")
-    ax2.set_xlabel("小时")
-    ax2.set_xticks(hours)
-    ax2.legend(loc="upper left")
-    ax2.grid(alpha=.3)
-    for start, end, name in config.PEAK_HOURS:         # 底纹只是标注，不参与判定
-        ax2.axvspan(start, end, color="#1f77b4", alpha=.10)
-        ax2.text((start + end) / 2.0, ax2.get_ylim()[1] * .93, name,
-                 ha="center", fontsize=8, color="#555555")
+    # 示例图在这里标的是「早高峰」，但我们这份数据的出行最高点在 6 时、早晚高峰底纹里
+    # 出行并没有抬起来，照写「早高峰」就成了图上没有的结论，所以只标实测最高点。
+    peak_hour = int(travel.idxmax())
+    ax.annotate(f"出行最高 {peak_hour}时（{int(travel.max())} 点）",
+                (peak_hour, travel.max()),
+                xytext=(peak_hour + 1.5, travel.max() + stay.max() * .28),
+                arrowprops=dict(arrowstyle="->", color=RED, lw=1.2),
+                color=RED, fontsize=9)
 
-    fig.suptitle("24 小时出行 / 驻留分布（上下两格各自量级，只比形状不比高低）")
-    fig.tight_layout(rect=(0, 0, 1, 0.97))
+    inset = ax.inset_axes([0.55, 0.52, 0.42, 0.34])
+    for start, end, _ in config.PEAK_HOURS:
+        inset.axvspan(start, end, color="#1f77b4", alpha=.10)
+    inset.plot(hours, travel.values, marker="^", color=RED)
+    inset.fill_between(hours, travel.values, alpha=.15, color=RED)
+    inset.set_ylim(0, travel.max() * 1.25)
+    inset.set_xticks([0, 6, 12, 18, 23])
+    inset.set_title(f"出行点单独放大（0~{int(travel.max())}，只为看清形状）", fontsize=8)
+    inset.tick_params(labelsize=7)
+
+    fig.suptitle(f"24 小时出行 / 驻留点分布（同一坐标叠画：驻留量级约为出行的 "
+                 f"{stay.sum() / max(travel.sum(), 1):.0f} 倍）")
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
     _save(fig, config.FIG_HOUR_LINE)
 
 
@@ -132,11 +149,13 @@ def plot_mode_bar(mode_df):
 
 
 def plot_heatmap(heat_df):
-    """图5：Top10 商圈 × 24 小时热力矩阵。窗口计数取该小时内的峰值。
+    """图5：Top10 商圈 × 24 小时热力矩阵，按绝对人次上色（对齐讲义示例）。
 
-    色标按行各自归一化：四个商圈量级差到两三个数量级（太原街峰值 2570、棋盘山只有 10），
-    共用一套色标会把小的那几行整体冲成同一色，日内起伏完全看不出来。
-    每行右侧标出该行真实峰值，绝对量级信息不丢。
+    窗口计数取该小时内的峰值：一小时内有 60 个十分钟窗口，取最大那个代表这一小时最挤的程度。
+    色标用的是**真实人次**而不是每行各自的最大值。之前按行归一化能把每个商圈的日内起伏都
+    看清，但代价是棋盘山（峰值 10）和中街（峰值 215）会画得和太原街（峰值 2570）一样红，
+    读者按颜色估人数会高估十几倍。示例图同样是绝对刻度，这里跟过来更诚实；
+    小商圈看不出的起伏，用每格里的数字标签补回。
     """
     t = pd.to_datetime(heat_df["time"])
     df = heat_df.assign(hour=t.dt.hour).dropna(subset=["hour"])
@@ -146,40 +165,54 @@ def plot_heatmap(heat_df):
     M = pivot.loc[top.index]
 
     values = M.to_numpy(dtype=float)
-    row_max = values.max(axis=1)
-    rel = values / np.maximum(row_max, 1)[:, None]        # 全零行保持 0，不出 NaN
-
-    fig, ax = plt.subplots(figsize=(11, 1 + 1.1 * len(M)))
-    im = ax.imshow(rel, aspect="auto", cmap="YlOrRd", vmin=0, vmax=1)
+    fig, ax = plt.subplots(figsize=(12, 1 + 1.1 * len(M)))
+    im = ax.imshow(values, aspect="auto", cmap="YlOrRd",
+                   vmin=0, vmax=values.max())
     ax.set_xticks(range(24), [f"{h}时" for h in range(24)], fontsize=8, rotation=60)
     ax.set_yticks(range(len(M)), M.index)
-    for i, v in enumerate(row_max):
-        ax.text(23.7, i, f"峰值 {int(v)}", va="center", fontsize=8)
+    for i, row in enumerate(values):
+        for j, v in enumerate(row):
+            if v > 0:
+                ax.text(j, i, int(v), ha="center", va="center", fontsize=6.5,
+                        color="white" if v > values.max() * .6 else "#333333")
+        ax.text(23.7, i, f"峰值 {int(row.max()):,}", va="center", fontsize=8)
     ax.set_xlim(-0.5, 26.5)
     ax.set_xlabel("小时")
-    ax.set_title(f"商圈 × 24 小时人流热力（{config.HEATMAP_WINDOW_SIZE} 分钟窗口峰值，色标按行归一化）")
-    fig.colorbar(im, ax=ax, label="占本商圈当日峰值比例", pad=0.02)
+    ax.set_title(f"商圈 × 24 小时人流热力（{config.HEATMAP_WINDOW_SIZE} 分钟窗口内的峰值人次）")
+    fig.colorbar(im, ax=ax, label="窗口累计人次", pad=0.02)
     _save(fig, config.FIG_HEATMAP)
 
 
 def plot_3d_traj(label_df):
-    """图6：Top5 用户 3D 时空轨迹。x/y 是位置、z 是时间，驻留表现为垂直上升的柱。"""
+    """图6：Top5 用户 3D 时空轨迹。x/y 是位置、z 是时间，驻留表现为垂直上升的柱。
+
+    点的形状按标签区分（对齐示例图）：红三角=出行、绿圆点=驻留；
+    连线只表示同一个用户的时间先后，用不同颜色分人。
+    """
     df = label_df.copy()
     df["_dt"] = pd.to_datetime(df["time"].astype(str), format="%Y%m%d%H%M%S", errors="coerce")
     df = df.dropna(subset=["_dt", "lon", "lat"])
+    df["z"] = df["_dt"].dt.hour + df["_dt"].dt.minute / 60.0
     top_users = df["imsi"].value_counts().head(SCATTER_3D_TOP).index
 
     fig = plt.figure(figsize=(9, 7))
     ax = fig.add_subplot(111, projection="3d")
     for i, u in enumerate(top_users):
         g = df[df["imsi"] == u].sort_values("_dt")
-        z = g["_dt"].dt.hour + g["_dt"].dt.minute / 60.0
-        ax.plot(g["lon"], g["lat"], z, marker="o", markersize=3,
-                color=plt.cm.tab10(i % 10), label=f"用户{str(u)[-4:]}")
+        ax.plot(g["lon"], g["lat"], g["z"], marker="", color=USER_COLORS[i % len(USER_COLORS)],
+                alpha=.75, label=f"用户{str(u)[-4:]}轨迹")
+        stay_g, travel_g = g[g["label"] == 0], g[g["label"] == 1]
+        ax.scatter(stay_g["lon"], stay_g["lat"], stay_g["z"], marker="o", s=18,
+                   color=GREEN, depthshade=False)
+        ax.scatter(travel_g["lon"], travel_g["lat"], travel_g["z"], marker="^", s=26,
+                   color=RED, depthshade=False)
+    # 图例先放两类点（示例图就是这个读法），再放各用户连线
+    ax.scatter([], [], marker="o", s=18, color=GREEN, label="驻留点")
+    ax.scatter([], [], marker="^", s=26, color=RED, label="出行点")
     ax.set_xlabel("经度")
     ax.set_ylabel("纬度")
     ax.set_zlabel("时间(小时)")
-    ax.set_title(f"Top{len(top_users)} 用户 3D 时空轨迹")
+    ax.set_title(f"Top{len(top_users)} 用户 3D 时空轨迹（红三角=出行 / 绿圆点=驻留）")
     ax.legend(fontsize=8)
     ax.view_init(elev=25, azim=50)
     _save(fig, config.FIG_3D_TRAJ)
