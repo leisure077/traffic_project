@@ -160,6 +160,10 @@ FIG_3D_TRAJ = os.path.join(FIG_DIR, "fig_3d_traj.png")
 RESULT_FIGS = [FIG_STAGE3_PIE, FIG_HOUR_LINE, FIG_PURPOSE_BAR,
                FIG_MODE_BAR, FIG_HEATMAP, FIG_3D_TRAJ]
 
+# 附加图：讲义只要求上面 6 张，这两张是额外补的交付物，不计入 6 张核对
+FIG_CLUSTER = os.path.join(FIG_DIR, "fig_stage2_clusters.png")
+FIG_DASHBOARD = os.path.join(FIG_DIR, "fig_dashboard.png")
+
 # 早晚高峰底纹（课时 33 的常识区间，只用于图2 标注，不参与任何判定）
 PEAK_HOURS = [(7, 9, "早高峰"), (17, 19, "晚高峰")]
 

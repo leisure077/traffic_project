@@ -1,7 +1,7 @@
 # 出行实训 · 交通时空数据分析（traffic_project）
 
 从沈阳运营商**基站信令定位数据**里识别每个人的**出行 / 驻留**行为，再判断**出行目的**、
-**出行方式**，并输出**商圈实时热力**，最后画出 6 张结果图。
+**出行方式**，并输出**商圈实时热力**，最后画出 6 张结果图（另附 2 张讲清中间过程的附加图）。
 
 一条命令跑完 8 个模块：
 
@@ -24,7 +24,7 @@ traffic_project/
 ├── purpose.py       # ⑤ 出行目的
 ├── mode.py          # ⑥ 出行方式
 ├── heatmap.py       # ⑦ 实时热力
-├── visualize.py     # ⑧ 可视化6张图
+├── visualize.py     # ⑧ 可视化6张必交图 + 2张附加图
 ├── main.py          # 一键运行全部8个模块
 ├── test_utils.py    # 课时58：unittest 19 项（haversine / 手写kmeans / 毫秒+8时区）
 ├── requirements.txt
@@ -35,7 +35,7 @@ traffic_project/
 └── result/
     ├── cleaned_data.csv / stage1_travel_points.csv / stage2_cluster.csv
     ├── stage3_label.csv / purpose_result.csv / mode_result.csv / heatmap_result.csv
-    └── figures/     # 6 张 PNG
+    └── figures/     # 6 张必交 PNG + 2 张附加 PNG
 ```
 
 数据目录（`原始数据.csv` 等 6 个输入文件）**不放在项目内**：`config.py` 的
@@ -102,7 +102,7 @@ stage3_label.csv                        全量点 label
    ├─ ⑥ label==1 切出行段 → 站点邻近点数证据 + 速度兜底 → mode_result.csv
    └─ ⑦ 实时流（自带经纬度）→ 最近商圈匹配 → 分钟×商圈计数
          → 补齐 1440 分钟 → rolling(10) 求和             → heatmap_result.csv
-   ⑧ 六张图                                              → result/figures/
+   ⑧ 六张必交图 + 两张附加图（簇划分、总览拼图）                     → result/figures/
 ```
 
 三条设计线贯穿全程：
@@ -126,11 +126,16 @@ stage3_label.csv                        全量点 label
 | `mode_result.csv` | 出行段 × 出行方式（含站点证据点数、均速、距离） |
 | `heatmap_result.csv` | 每分钟 × 每商圈的近 10 分钟滚动人流 |
 | `figures/fig_stage3_pie.png` | 出行/驻留占比 |
-| `figures/fig_hour_line.png` | 逐小时出行/驻留双轴曲线 |
+| `figures/fig_hour_line.png` | 逐小时出行/驻留上下两格曲线（7-9 / 17-19 时加早晚高峰底纹，仅标注不参与判定） |
 | `figures/fig_purpose_bar.png` | 出行目的分布（数量 + 占比） |
 | `figures/fig_mode_bar.png` | 出行方式分布（数量 + 占比） |
 | `figures/fig_heatmap.png` | 命中商圈 × 24 小时热力矩阵（本次 4 个，见下方口径说明；色标按行归一化，行末标真实峰值） |
 | `figures/fig_3d_traj.png` | Top5 用户出行轨迹 3D 视图（z 轴 = 一天中的时刻） |
+| `figures/fig_stage2_clusters.png` | **附加图**：某用户全日视角 + 簇划分放大图，左格看阶段1 漏斗、右格看阶段2 分组与阶段3 判定 |
+| `figures/fig_dashboard.png` | **附加图**：上面 6 张必交图拼成的 3×2 总览，答辩时一张图讲完全链 |
+
+两张附加图不在 `config.RESULT_FIGS` 里，交付核对仍按讲义要求的 **7 CSV + 6 PNG** 计，
+自检第 6 项口径不变；缺图（如找不到合适的演示用户）只 WARN，不影响六张必交图。
 
 结果 CSV 一律 `utf-8-sig` 输出，Excel 双击打开中文不乱码。
 `sample=20000` 量级下一次全流程 **4.5~5.9 秒**（本机 2026-10-15 三次实测，Python 3.12 +
