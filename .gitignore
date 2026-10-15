@@ -1,0 +1,14 @@
+# 原始信令数据含 imsi（手机号级身份标识），63MB，不入库
+相关数据/
+data/
+
+# 结果 CSV 是清洗后的信令点，同样带 imsi；只保留聚合后的图
+result/*.csv
+
+__pycache__/
+*.pyc
+.venv/
+.idea/
+
+# 对比临时产物
+_cmp/

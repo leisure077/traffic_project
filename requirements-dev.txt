@@ -1,0 +1,5 @@
+# 可选工具依赖，主流程（python main.py）不需要，装不装都不影响 8 个模块和 13 项交付物。
+# 只有 tools/report.py 里的 df.to_markdown() 用到 tabulate，
+# 用来把 7 个结果 CSV 重排成 result/项目总结报告.md 的表格。
+# 装法：pip install -r requirements-dev.txt
+tabulate>=0.9

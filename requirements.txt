@@ -1,0 +1,6 @@
+# 项目只用 pandas + numpy + matplotlib 完成全流程：
+# Haversine、K-Means、轮廓系数、邓恩指数全部手写实现（讲义要求），
+# 不依赖 sklearn / geopandas / pyproj。
+numpy>=1.26
+pandas>=2.0
+matplotlib>=3.7
