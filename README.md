@@ -26,7 +26,7 @@ traffic_project/
 ├── heatmap.py       # ⑦ 实时热力
 ├── visualize.py     # ⑧ 可视化6张必交图 + 2张附加图
 ├── main.py          # 一键运行全部8个模块
-├── test_utils.py    # 课时58：unittest 19 项（haversine / 手写kmeans / 毫秒+8时区）
+├── test_utils.py    # 课时58：unittest 22 项（haversine / 手写kmeans / 选K基线 / 毫秒+8时区）
 ├── requirements.txt
 ├── README.md
 ├── tools/           # 可选工具，不在 8 模块链里
@@ -72,7 +72,7 @@ python main.py --sample 0         # 全量约 53 万行
 python main.py --no-fig           # 只出 7 个 CSV，不生成图
 python data_clean.py              # 任一模块都能单独跑（需先跑过它依赖的上游）
 python tools/selfcheck.py         # 6 项交付前自检
-python -m unittest test_utils -v  # 课时58 单元测试（19 项）
+python -m unittest test_utils -v  # 课时58 单元测试（22 项）
 python tools/report.py            # 重建 result/项目总结报告.md
 ```
 
@@ -91,7 +91,8 @@ cleaned_data.csv                        imsi,time,lac_id,cell_id,lon,lat
    ▼
 stage1_travel_points.csv                + speed（高召回粗筛，宁可多留）
    │  ③ 阶段2：经纬度先投影成米（否则欧氏距离把地图横向压扁 25%）→ 逐用户手写 K-Means，
-   │           K=2~10 用「轮廓系数 + 0.1×邓恩指数」选优
+   │           K=2~10 用「轮廓系数 + 0.1×邓恩指数」选优；基线是「不拆分记 0 分」，
+   │           所以同一个基站那种坐标完全相同的点不会被硬拆成两簇
    ▼
 stage2_cluster.csv                      + cluster, is_single_cluster
    │  ④ 阶段3：簇心到首/中/尾三点 <1000m 且 首末跨度 <2h → 驻留，否则出行；

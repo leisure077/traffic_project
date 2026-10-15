@@ -32,8 +32,11 @@ def kmeans(X, k, max_iter=None, tol=None):
     max_iter = config.KM_MAX_ITER if max_iter is None else max_iter
     tol = config.KM_TOL if tol is None else tol
     n = len(X)
-    if k >= n:                                  # 簇数不少于点数：每个点自成一簇
-        return np.arange(n, dtype=int), X.copy()
+    if k >= n:                                  # 簇数不少于点数：按「位置」而不是按「点」分簇
+        # 同一个基站的点经纬度完全相同，投影后是同一个坐标。按点编号分簇会把两个
+        # 一模一样的坐标拆进两簇，所以先去重：同一位置只能有一簇。
+        uniq, inv = np.unique(X, axis=0, return_inverse=True)
+        return inv.astype(int).reshape(n), uniq
 
     centers = X[np.random.choice(n, k, replace=False)].copy()
     labels = np.zeros(n, dtype=int)
@@ -103,8 +106,13 @@ def choose_best_k(X):
     n = len(X)
     if n < config.K_MIN:                        # 点太少，直接单簇
         return np.zeros(n, dtype=int), 1
+    if len(np.unique(X, axis=0)) == 1:          # 所有点同一个坐标：没有任何结构可分
+        return np.zeros(n, dtype=int), 1
     D = pairwise_euclidean(X)                   # 距离矩阵只算一次，遍历 k 时复用
-    best_score, best_k, best_labels = -np.inf, 1, np.zeros(n, dtype=int)
+    # 基线是「不拆分」，得分记 0：轮廓系数为 0 正好表示簇内簇间没有区别，
+    # 只有真的比 0 好才值得拆。原先基线取 -inf，两点的退化拆法（得分恰好 0）
+    # 也会赢过基线，把同一个位置的点硬分成两簇。
+    best_score, best_k, best_labels = 0.0, 1, np.zeros(n, dtype=int)
     for k in range(config.K_MIN, min(config.K_MAX, n) + 1):
         labels, _ = kmeans(X, k)
         if len(np.unique(labels)) < 2:          # 退化成单簇不给高分

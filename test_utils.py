@@ -2,7 +2,8 @@
 """
 test_utils.py —— 课时 58 §三.4 建议优先测试的纯函数
 
-覆盖四组：haversine（同点为0/单位换算/已知距离）、kmeans（两团能分开、中心不出 NaN）、
+覆盖四组：haversine（同点为0/单位换算/已知距离）、kmeans（两团能分开、中心不出 NaN、
+同坐标不拆簇）、choose_best_k（全同点不拆 / 真远点仍拆）、
 decide_purpose（居住/购物/旅游/其他 + 窗口覆盖 bug 回归）、毫秒时间戳 +8 转换。
 
 跑法：
@@ -17,7 +18,7 @@ import pandas as pd
 import config
 import data_clean
 from purpose import decide_purpose
-from tr_stage2 import kmeans
+from tr_stage2 import choose_best_k, kmeans
 from utils import haversine, is_night, parse_time, project_to_meters
 
 # 太原街 → 中街，沈阳两条商业街的真实坐标，实际约 2.1 km
@@ -106,6 +107,37 @@ class TestKmeans(unittest.TestCase):
         pts = np.array([[0.0, 0.0], [5.0, 5.0], [9.0, 1.0]])
         labels, _ = kmeans(pts, 5)
         self.assertEqual(sorted(labels.tolist()), [0, 1, 2])
+
+    def test_k_ge_n_duplicate_points_share_cluster(self):
+        """簇数超过点数时，坐标完全相同的两个点必须落在同一簇。
+
+        同一个基站的点经纬度一模一样，按点编号发簇号会把它们拆成两簇，
+        阶段3 就会把「一直待在同一个基站」判成出行。
+        """
+        pts = np.array([[0.0, 0.0], [0.0, 0.0], [5.0, 5.0]])
+        labels, _ = kmeans(pts, 5)
+        self.assertEqual(labels[0], labels[1])
+        self.assertEqual(sorted(set(labels.tolist())), [0, 1])
+
+
+class TestChooseBestK(unittest.TestCase):
+    def test_identical_points_stay_one_cluster(self):
+        """坐标全相同的两个点，任何 K 下都不许被拆开（退化拆法的轮廓得分恰好 0，不能赢过基线）。"""
+        np.random.seed(config.RANDOM_STATE)
+        pts = np.array([[123.4, 41.8], [123.4, 41.8]])
+        X = project_to_meters(pts[:, 0], pts[:, 1])
+        labels, best_k = choose_best_k(X)
+        self.assertEqual(best_k, 1)
+        self.assertEqual(set(labels.tolist()), {0})
+
+    def test_two_far_points_still_split(self):
+        """基线改成 0 分之后，真正隔得远的两个点仍要拆开，别把修复做成「一律不拆」。"""
+        np.random.seed(config.RANDOM_STATE)
+        pts = np.array([[123.30, 41.80], [123.60, 41.80]])
+        X = project_to_meters(pts[:, 0], pts[:, 1])
+        labels, best_k = choose_best_k(X)
+        self.assertEqual(best_k, 2)
+        self.assertNotEqual(labels[0], labels[1])
 
     def test_reproducible_with_same_seed(self):
         """同一种子下两次聚类必须逐位一致。注意造点本身也吃随机流，所以每次聚类前都要重新播种。"""
