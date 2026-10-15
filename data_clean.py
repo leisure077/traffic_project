@@ -89,6 +89,10 @@ def sample_by_user(df):
     随机抽行会把同一用户的连续轨迹抽碎——一个原本 80 点的用户抽完只剩 3 点，
     规则9 之后只剩二十几个超级活跃用户。这里在合格用户里打乱顺序，整用户纳入直到
     累计点数达标，被选中用户的点一颗不拆。
+
+    抽样放在 9 条规则全部跑完之后：原先排在规则6 之前，抽的是"还没补到经纬度、
+    还没去重"的行，20000 行过完后面几条只剩 17362 行（产出率 87%），
+    少掉的 2638 行是白抽的。全量清洗在本机只多花约 1.6 秒，换来满额样本。
     """
     target = config.SAMPLE_ROWS
     if not target:
@@ -173,11 +177,11 @@ def clean_data():
     with Timer("规则4 时间转换"):
         df = rule4_timestamp(df)           # 规则4
     df = rule5_target_date(df)             # 规则5
-    df = sample_by_user(df)                # 教学抽样（非规则）
     df = rule6_join_station(df)            # 规则6
     df = rule7_sort(df)                    # 规则7
     df = rule8_dedup_minute(df)            # 规则8
     df = rule9_filter_sparse(df)           # 规则9
+    df = sample_by_user(df)                # 教学抽样（非规则，放在全部规则之后）
 
     out = df[config.CLEANED_COLS].copy()
     save_csv(out, config.CLEANED_DATA_FILE)
