@@ -64,9 +64,8 @@ def plot_stage3_pie(label_df):
 def plot_hour_line(label_df):
     """图2：24 小时出行/驻留叠在同一张图上（对齐讲义示例的排版）。
 
-    我们的出行点只有驻留点的几十分之一（本次约 1/31），直接共轴会把红线压成
-    贴在横轴上的一条平线，看着像画坏了。所以共轴保留示例的样子，
-    另在右上角补一个小格把红线单独放大——小格只换纵轴刻度，不改任何数值。
+    低频点改为保留后出行/驻留量级接近（本次驻留约为出行的 2.9 倍），共轴直接画，
+    不再需要放大小格；早晚高峰用淡蓝底纹标注，只是标注、不参与判定。
     左右双轴（两条线各自一套刻度）不用：那会让两条线看起来可比，
     读者会按交叉点误读「什么时候出行超过了驻留」。
     """
@@ -87,24 +86,16 @@ def plot_hour_line(label_df):
     ax.legend(loc="upper left")
     ax.grid(alpha=.3)
 
-    # 示例图在这里标的是「早高峰」，但我们这份数据的出行最高点在 6 时、早晚高峰底纹里
-    # 出行并没有抬起来，照写「早高峰」就成了图上没有的结论，所以只标实测最高点。
+    # 示例图在这里标的是「早高峰」，但我们这份数据的出行最高点在 23 时，
+    # 早晚高峰底纹里出行并没有明显抬起来，照写「早高峰」就成了图上没有的结论，
+    # 所以只标实测最高点；峰值落在傍晚以远时把文字放到左侧，避免画出坐标外。
     peak_hour = int(travel.idxmax())
     ax.annotate(f"出行最高 {peak_hour}时（{int(travel.max())} 点）",
                 (peak_hour, travel.max()),
-                xytext=(peak_hour + 1.5, travel.max() + stay.max() * .28),
+                xytext=(peak_hour - 6.5 if peak_hour >= 18 else peak_hour + 1.5,
+                        travel.max() + stay.max() * .12),
                 arrowprops=dict(arrowstyle="->", color=RED, lw=1.2),
                 color=RED, fontsize=9)
-
-    inset = ax.inset_axes([0.55, 0.52, 0.42, 0.34])
-    for start, end, _ in config.PEAK_HOURS:
-        inset.axvspan(start, end, color="#1f77b4", alpha=.10)
-    inset.plot(hours, travel.values, marker="^", color=RED)
-    inset.fill_between(hours, travel.values, alpha=.15, color=RED)
-    inset.set_ylim(0, travel.max() * 1.25)
-    inset.set_xticks([0, 6, 12, 18, 23])
-    inset.set_title(f"出行点单独放大（0~{int(travel.max())}，只为看清形状）", fontsize=8)
-    inset.tick_params(labelsize=7)
 
     fig.suptitle(f"24 小时出行 / 驻留点分布（同一坐标叠画：驻留量级约为出行的 "
                  f"{stay.sum() / max(travel.sum(), 1):.0f} 倍）")

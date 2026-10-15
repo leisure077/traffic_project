@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-tr_stage1.py —— 出行/驻留识别·阶段1：低频过滤 + 轨迹切段 + 速度粗筛（课时 31~34）
+tr_stage1.py —— 出行/驻留识别·阶段1：低频点标记 + 轨迹切段 + 速度粗筛（课时 31~34）
 
 入口 `stage1_analysis()`：读 cleaned_data.csv → 产出 stage1_travel_points.csv。
 
 粗筛只负责「求召回」，宁多勿漏：
   1. 低频点（课时 32）：同一用户在同一坐标出现 < LOW_FREQ_THRESHOLD 次，多半是基站切换
-     时的短暂路过或漂移，反连接删除，减少后面算速度的干扰；
-     注意阶段3 做最终判定时会用清洗全量点（含这些点，默认驻留 0），保证标签覆盖全量；
+     时的短暂路过或漂移。讲义口径是反连接删除，本项目改成**只标记 is_low 不删除**——
+     实测这些一次性坐标上压着 83.7% 的高速移动点，删掉就把出行样本删没了（详见 README 七）；
+     阶段3 做最终判定时用清洗全量点，保证标签覆盖全量；
   2. 轨迹切段（课时 32）：换用户或坐标一变就开新段，段内坐标相同，段间那条边就是潜在移动；
   3. 相邻点速度（课时 33）：groupby(imsi) 内取上一条坐标与时间，Haversine 距离 / 时间差；
      速度 <0 或 >ABNORMAL_SPEED 视为基站跳跃，置 NaN 而不是删行——该点的位置和时间仍有效；
@@ -22,16 +23,21 @@ import config
 from utils import haversine, log, log_step, parse_time, read_csv, save_csv, Timer
 
 
-def remove_low_freq(df):
-    """课时 32 第 2 步：按「同用户同坐标」统计出现次数，<阈值 的点用反连接删除。"""
-    before = len(df)
+def mark_low_freq(df):
+    """课时 32 第 2 步的低频统计照做，但只打 is_low 标记，不再删点。
+
+    删点的实测代价：速度>8km/h 的点里 83.7% 落在「同用户同坐标出现<4 次」的基站上——
+    那正是移动途中只驻留一次的基站，整批删掉后出行率从 25.6% 被压到 3.1%。
+    """
     loc_cnt = df.groupby(["imsi", "lon", "lat"]).size().reset_index(name="cnt")
     low_freq = loc_cnt[loc_cnt["cnt"] < config.LOW_FREQ_THRESHOLD][["imsi", "lon", "lat"]].copy()
     low_freq["_is_low"] = 1
     df = df.merge(low_freq, on=["imsi", "lon", "lat"], how="left")
-    df = df[df["_is_low"].isna()].drop(columns="_is_low").reset_index(drop=True)
-    log(f"低频点过滤（同用户同坐标 <{config.LOW_FREQ_THRESHOLD} 次）："
-        f"{before:,} -> {len(df):,}（删除 {before - len(df)}）")
+    df["is_low"] = df["_is_low"].notna().astype("int64")
+    df = df.drop(columns="_is_low")
+    n_low = int(df["is_low"].sum())
+    log(f"低频点标记（同用户同坐标 <{config.LOW_FREQ_THRESHOLD} 次）："
+        f"{len(df):,} 行中 {n_low:,} 个标记 is_low=1，全部保留不删除")
     return df
 
 
@@ -76,7 +82,7 @@ def compute_speed(df):
 
 def stage1_analysis(df=None):
     """执行阶段1，保存 stage1_travel_points.csv 并返回疑似出行点表。"""
-    log_step(2, "阶段1：低频点过滤 + 轨迹切段 + 速度粗筛")
+    log_step(2, "阶段1：低频点标记 + 轨迹切段 + 速度粗筛")
     if df is None:
         df = read_csv(config.CLEANED_DATA_FILE,
                       dtype={"imsi": str, "lac_id": str, "cell_id": str})
@@ -84,7 +90,7 @@ def stage1_analysis(df=None):
     df = df.sort_values(["imsi", "time"]).reset_index(drop=True).copy()
     df["time_dt"] = parse_time(df["time"])
 
-    df = remove_low_freq(df)
+    df = mark_low_freq(df)
     df = split_segments(df)
     df = compute_speed(df)
 

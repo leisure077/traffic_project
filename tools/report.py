@@ -156,7 +156,7 @@ def build(s):
     A("config.py       全部路径与阈值（改参数只改这里，python config.py 自检输入文件）")
     A("utils.py        Haversine / pairwise 欧氏 / 计时器 / 中文字体 / 读写 / 日志")
     A("data_clean.py   ① 九条清洗规则 + 整用户抽样")
-    A("tr_stage1.py    ② 阶段1：低频点删除 + 连续段 + 相邻点速度粗筛")
+    A("tr_stage1.py    ② 阶段1：低频点标记（不删） + 连续段 + 相邻点速度粗筛")
     A("tr_stage2.py    ③ 阶段2：手写 K-Means + 轮廓系数&邓恩指数选 K")
     A("tr_stage3.py    ④ 阶段3：三点距离 + 首末时间跨度规则精判")
     A("purpose.py      ⑤ 出行目的：POI 空间证据 + 时间窗兜底")
@@ -198,7 +198,8 @@ def build(s):
 
     A("## 四、② 阶段1 连续段与速度粗筛")
     A("")
-    A(f"- 低频点（同用户同坐标出现 < {config.LOW_FREQ_THRESHOLD} 次）按讲义口径**直接删除**；")
+    A(f"- 低频点（同用户同坐标出现 < {config.LOW_FREQ_THRESHOLD} 次）只打 is_low 标记、**不删行**"
+      f"（讲义口径是删除，本项目实测删除会连带删掉 83.7% 的高速移动点，见 README 七）；")
     A(f"- 相邻点速度 > {config.SPEED_THRESHOLD} km/h 判疑似出行，得到 "
       f"{f1['出行点数']:,} 个出行点（占清洗点 {f1['占清洗点%']}%）；")
     A(f"- 速度 <0 或 >{config.ABNORMAL_SPEED} km/h 视为基站跳跃，置 NaN 不参与判定"

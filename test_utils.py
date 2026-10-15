@@ -2,8 +2,8 @@
 """
 test_utils.py —— 课时 58 §三.4 建议优先测试的纯函数
 
-覆盖四组：haversine（同点为0/单位换算/已知距离）、kmeans（两团能分开、中心不出 NaN、
-同坐标不拆簇）、choose_best_k（全同点不拆 / 真远点仍拆）、
+覆盖五组：haversine（同点为0/单位换算/已知距离）、kmeans（两团能分开、中心不出 NaN、
+同坐标不拆簇）、choose_best_k（全同点不拆 / 真远点仍拆）、mark_low_freq（低频点保留且算得出速度）、
 decide_purpose（居住/购物/旅游/其他 + 窗口覆盖 bug 回归）、毫秒时间戳 +8 转换。
 
 跑法：
@@ -17,6 +17,7 @@ import pandas as pd
 
 import config
 import data_clean
+import tr_stage1
 from purpose import decide_purpose
 from tr_stage2 import choose_best_k, kmeans
 from utils import haversine, is_night, parse_time, project_to_meters
@@ -181,6 +182,31 @@ class TestDecidePurpose(unittest.TestCase):
 
     def test_outside_all_windows_is_other(self):
         self.assertEqual(decide_purpose(self._row(start_hour=7, end_hour=23)), "其他")
+
+
+class TestMarkLowFreq(unittest.TestCase):
+    """阶段1 低频点：只标记不删除。删掉会连带删掉移动路上只出现一次的基站坐标。"""
+
+    def _df(self):
+        """四个 home 点（达到高频阈值）+ 一个正北 1.4 km、只出现一次的点。"""
+        home = (123.4119, 41.8052)
+        far = (123.4119, 41.8178)
+        rows = [dict(imsi="u1", lon=home[0], lat=home[1])
+                for _ in range(config.LOW_FREQ_THRESHOLD)]
+        rows.append(dict(imsi="u1", lon=far[0], lat=far[1]))
+        df = pd.DataFrame(rows)
+        df["time_dt"] = pd.date_range("2018-10-03 08:00", periods=len(df), freq="10min")
+        return df
+
+    def test_low_freq_rows_are_kept(self):
+        out = tr_stage1.mark_low_freq(self._df())
+        self.assertEqual(len(out), len(self._df()))
+        self.assertEqual(out["is_low"].tolist(), [0, 0, 0, 0, 1])
+
+    def test_far_low_freq_point_still_gets_speed(self):
+        """10 分钟挪 1.4 km = 8.4 km/h，这个点必须留得下来、算得出速度。"""
+        out = tr_stage1.compute_speed(tr_stage1.mark_low_freq(self._df()))
+        self.assertGreater(out["speed"].iloc[-1], config.SPEED_THRESHOLD)
 
 
 if __name__ == "__main__":
