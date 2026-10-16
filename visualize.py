@@ -2,8 +2,8 @@
 """
 visualize.py —— 六张结果可视化（课时 55~56）
 
-入口 `visualize_all()`：一次读五张结果表（阶段3标签 / 阶段2簇 / 目的 / 方式 / 小时命中表），
-生成六张必交 PNG，外加两张附加 PNG。
+入口 `visualize_all()`：一次读六张结果表（阶段3标签 / 阶段2簇 / 目的 / 方式 / 小时命中表 / 窗口长表），
+生成六张必交 PNG，外加三张附加 PNG。
 
   1 fig_stage3_pie    出行/驻留占比      —— 一天里移动点和停留点各占多少
   2 fig_hour_line     24 小时同轴叠画    —— 出行/驻留随时间如何变化（含早晚高峰底纹）
@@ -14,6 +14,8 @@ visualize.py —— 六张结果可视化（课时 55~56）
 
   + fig_stage2_clusters 某用户的簇划分 + 阶段3 判定 —— 六张必交图里唯一没覆盖的
     「阶段2 到底做了什么」，讲义未要求，作为附加图补上
+  + fig_heatmap_window  图5 的另一种口径：每小时只取最挤的 10 分钟窗口（老师示例代码的
+    `.max()` 取法），画法与图5 一致，两张并排看就是「同一个商圈、两个量」
   + fig_dashboard       上述 6 张拼成的 3×2 总览，答辩用一张图讲完
 
 两个反复用到的画图规矩：
@@ -159,11 +161,13 @@ def plot_mode_bar(mode_df):
 def plot_heatmap(heat_df):
     """图5：Top10 商圈 × 24 小时热力矩阵，格子里是**该小时的真实命中人次**，按绝对人次上色。
 
-    数值来自 heat_hourly.csv，它在 10 分钟滑动窗口之前统计（见 `heatmap.hourly_counts`）。
-    之前这里直接吃 heatmap_result.csv，两种取法都不对：按小时求和会把同一个人重复数 10 次
+    数值来自 heat_hourly.csv，它在 10 分钟滑动窗口之前算出（见 `heatmap.hourly_counts`）。
+    之前这里直接吃 heatmap_result.csv，两种取法都不适合图5：按小时求和会把同一个人重复数 10 次
     （一小时 60 个互相重叠的窗口），取 .max() 又只反映最挤的那一格——太原街 23 时 2,570，
     而示例同一格 32,187，差 12 倍。两张图画的本就不是一个量，不是数据差那么多。
     换成小时人次后太原街 23 时 = 12,502，与示例同为万级，逐时曲线归一化后与示例 r=0.946。
+    .max() 那一版没有丢：它单独画成附加图 `fig_heatmap_window.png`（`plot_heatmap_window`），
+    与老师示例代码同口径，两张并排就是「同一个商圈、两个量」。
 
     色标全表共用绝对刻度，不按行归一化：否则棋盘山（全天 79）会画得和太原街（13 万）一样红。
     数字只写深色格（>= 全表最大值一半），示例图就是这个画法；行尾不加「峰值 X」列，
@@ -197,6 +201,47 @@ def plot_heatmap(heat_df):
     ax.set_title("Top10商圈每小时人次热力图")
     fig.colorbar(im, ax=ax, label="小时命中人次", pad=0.02)
     _save(fig, config.FIG_HEATMAP)
+
+
+def plot_heatmap_window(window_df):
+    """附加图：10 分钟窗口峰值热力图（与老师示例代码同口径），图5 本体不动。
+
+    取数就是示例代码那一行：`groupby(["biz_name", "hour"])["count"].max()`——
+    每小时里最挤的那一个 10 分钟窗口，其余 59 个窗口丢掉。
+    所以这张图的数比图5 小一个量级（本次单格最高 2,570，图5 同格 12,502），
+    两张图不是谁画错了，是画的两个量。
+
+    画法（配色、绝对色标、只给深色格写数字）与图5 完全一致，方便两张并排看。
+    """
+    # read_csv 默认 dtype=str（护住 imsi），count 不转回数字的话
+    # groupby.max() 会按字符串比大小，"998" 赢过 "1318"。
+    window_df = window_df.copy()
+    window_df["count"] = pd.to_numeric(window_df["count"], errors="coerce")
+    window_df["hour"] = pd.to_datetime(window_df["time"]).dt.hour
+    peak = (window_df.groupby(["biz_name", "hour"])["count"].max().unstack(fill_value=0)
+            .reindex(columns=range(24), fill_value=0))
+    peak["全天合计"] = peak.sum(axis=1)
+    peak = peak.sort_values("全天合计", ascending=False).head(HEATMAP_TOP)
+    names = peak.index
+    values = peak.drop(columns=["全天合计"]).to_numpy(dtype=float)
+    vmax = values.max()
+
+    fig, ax = plt.subplots(figsize=(11.5, 1.45 * len(peak) + 1.2))
+    im = ax.imshow(values, aspect="auto", cmap="YlOrRd", vmin=0, vmax=vmax)
+    ax.set_xticks(range(24), [str(h) for h in range(24)], fontsize=8)
+    ax.set_yticks(range(len(peak)), names)
+    for i, row in enumerate(values):
+        for j, v in enumerate(row):
+            if v >= vmax * HEATMAP_LABEL_RATIO:
+                ax.text(j, i, int(v), ha="center", va="center",
+                        fontsize=7.5, color="white")
+    ax.set_xlim(-0.5, 23.5)
+    ax.set_ylim(len(peak) - 0.5, -0.5)
+    ax.set_xlabel("小时")
+    ax.set_ylabel("商圈")
+    ax.set_title("Top10商圈 × 24小时 10分钟人流峰值热力图")
+    fig.colorbar(im, ax=ax, label="10分钟窗口人流峰值", pad=0.02)
+    _save(fig, config.FIG_HEAT_WINDOW)
 
 
 def plot_3d_traj(label_df):
@@ -352,8 +397,8 @@ def build_dashboard():
 
 
 def visualize_all():
-    """读四张结果表，生成六张必交图 + 两张附加图；单张图失败只警告，不影响其他图。"""
-    log_step(8, "可视化（6 张图 + 2 张附加图）")
+    """读六张结果表，生成六张必交图 + 三张附加图；单张图失败只警告，不影响其他图。"""
+    log_step(8, "可视化（6 张图 + 3 张附加图）")
     setup_zh()
 
     label_df = read_csv(config.STAGE3_LABEL_FILE,
@@ -365,6 +410,7 @@ def visualize_all():
     mode_df = read_csv(config.MODE_RESULT_FILE, dtype={"imsi": str})
     heat_df = read_csv(config.HEAT_HOURLY_FILE)
     heat_df["全天合计"] = pd.to_numeric(heat_df["全天合计"], errors="coerce")
+    window_df = read_csv(config.HEATMAP_RESULT_FILE)      # 10 分钟窗口长表，附加图用
     cluster_df = read_csv(config.STAGE2_CLUSTER_FILE, dtype={"imsi": str, "time": str})
     cluster_df["cluster"] = pd.to_numeric(cluster_df["cluster"], errors="coerce")
 
@@ -373,6 +419,7 @@ def visualize_all():
             ("出行目的柱状", plot_purpose_bar, (purpose_df,)),
             ("出行方式柱状", plot_mode_bar, (mode_df,)),
             ("商圈热力矩阵", plot_heatmap, (heat_df,)),
+            ("10分钟窗口峰值热力", plot_heatmap_window, (window_df,)),
             ("Top5 3D 轨迹", plot_3d_traj, (label_df,)),
             ("阶段2簇划分", plot_stage2_clusters, (cluster_df, label_df))]
     for name, fn, args in jobs:
