@@ -149,8 +149,9 @@ def stage2_analysis(df=None):
                          "这天在清洗后还有数据。")
 
     np.random.seed(config.RANDOM_STATE)         # 课时 36：固定种子，簇结果可复现
+    groups = list(df.groupby("imsi"))           # 先物化，进度日志要知道总人数
     out_parts, chosen_ks, sses = [], [], []
-    for imsi, g in df.groupby("imsi"):
+    for gi, (imsi, g) in enumerate(groups, start=1):
         # 先投影成米再聚类：欧氏距离直接吃经纬度会把地图横向压扁 25%
         X = project_to_meters(g["lon"], g["lat"])
         labels, best_k, sse = choose_best_k(X)
@@ -162,6 +163,8 @@ def stage2_analysis(df=None):
         out_parts.append(g)
         chosen_ks.append(best_k)
         sses.append(sse)
+        if gi % 50 == 0 or gi == len(groups):   # 逐用户跑，得让人看出跑到哪了
+            log(f"  已完成 {gi}/{len(groups)} 个用户")
 
     result = pd.concat(out_parts, ignore_index=True)
     n_clusters = result.groupby(["imsi", "cluster"]).ngroups
