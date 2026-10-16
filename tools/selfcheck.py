@@ -163,18 +163,18 @@ def check_stage3_invariants():
 
 
 def check_reproducibility():
-    """同一种子下对同一用户跑两遍 choose_best_k，标签与最优 K 必须逐位相同。"""
+    """同一种子下对同一用户跑两遍 choose_best_k，标签、最优 K 与 SSE 必须逐位相同。"""
     cluster = _load(config.STAGE2_CLUSTER_FILE)
     user = cluster.groupby("imsi").size().sort_values(ascending=False).index[3]
     xy = cluster[cluster["imsi"] == user][["lon", "lat"]].to_numpy(float)
     X = project_to_meters(xy[:, 0], xy[:, 1])        # 走与 stage2 相同的投影路径
     np.random.seed(config.RANDOM_STATE)
-    a, ka = s2.choose_best_k(X)
+    a, ka, sa = s2.choose_best_k(X)
     np.random.seed(config.RANDOM_STATE)
-    b, kb = s2.choose_best_k(X)
-    ok = bool((a == b).all()) and ka == kb
-    log(f"[4] 阶段2 可复现性（用户 …{user[-4:]}，{len(X)} 点，两次 K={ka}/{kb}）→ "
-        f"{'PASS' if ok else 'FAIL'}")
+    b, kb, sb = s2.choose_best_k(X)
+    ok = bool((a == b).all()) and ka == kb and sa == sb
+    log(f"[4] 阶段2 可复现性（用户 …{user[-4:]}，{len(X)} 点，两次 K={ka}/{kb}，"
+        f"SSE={sa:,.0f}/{sb:,.0f} 米²）→ {'PASS' if ok else 'FAIL'}")
     return ok
 
 

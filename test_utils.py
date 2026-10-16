@@ -128,7 +128,7 @@ class TestChooseBestK(unittest.TestCase):
         np.random.seed(config.RANDOM_STATE)
         pts = np.array([[123.4, 41.8], [123.4, 41.8]])
         X = project_to_meters(pts[:, 0], pts[:, 1])
-        labels, best_k = choose_best_k(X)
+        labels, best_k, _ = choose_best_k(X)
         self.assertEqual(best_k, 1)
         self.assertEqual(set(labels.tolist()), {0})
 
@@ -137,7 +137,7 @@ class TestChooseBestK(unittest.TestCase):
         np.random.seed(config.RANDOM_STATE)
         pts = np.array([[123.30, 41.80], [123.60, 41.80]])
         X = project_to_meters(pts[:, 0], pts[:, 1])
-        labels, best_k = choose_best_k(X)
+        labels, best_k, _ = choose_best_k(X)
         self.assertEqual(best_k, 2)
         self.assertNotEqual(labels[0], labels[1])
 

@@ -10,7 +10,7 @@ tr_stage2.py —— 出行/驻留识别·阶段2：手写 K-Means 空间聚类�
   · silhouette_score(D,l) a=簇内均距、b=最近异簇均距，s=(b-a)/max(a,b)，越接近 1 越好；
   · dunn_index(D,l)       簇间最小距离 / 簇内最大直径，越大越好；
   · choose_best_k(X)      K 从 K_MIN 试到 K_MAX，score = 轮廓系数 + DUNN_WEIGHT × 邓恩指数，
-                          取最高分。距离矩阵 D 只算一次、各 K 复用。
+                          取最高分，返回 (labels, best_k, sse)。距离矩阵 D 只算一次、各 K 复用。
 
 聚类只在同一个用户的点之间进行（课时 38）——不同用户的点不该聚到一起。
 逐用户聚类前 np.random.seed(RANDOM_STATE) 一次，保证结果可复现。
@@ -102,26 +102,32 @@ def dunn_index(D, labels):
 
 
 def choose_best_k(X):
-    """遍历 K=K_MIN~K_MAX，用 score = 轮廓系数 + DUNN_WEIGHT × 邓恩指数 选最优（课时 37）。"""
+    """遍历 K=K_MIN~K_MAX，用 score = 轮廓系数 + DUNN_WEIGHT × 邓恩指数 选最优（课时 37）。
+
+    返回 (labels, best_k, sse)。sse 是最优划分下的**簇内平方误差和**（米²）：
+    纪要 day1 写的聚类评价是三件套「SSE / 邓恩指数 / 轮廓系数」，SSE 只报不选——
+    它随 K 单调下降，拿它当选择函数会永远选到 K_MAX；选 K 仍按课时 37 的 score。
+    """
     n = len(X)
     if n < config.K_MIN:                        # 点太少，直接单簇
-        return np.zeros(n, dtype=int), 1
+        return np.zeros(n, dtype=int), 1, 0.0
     if len(np.unique(X, axis=0)) == 1:          # 所有点同一个坐标：没有任何结构可分
-        return np.zeros(n, dtype=int), 1
+        return np.zeros(n, dtype=int), 1, 0.0
     D = pairwise_euclidean(X)                   # 距离矩阵只算一次，遍历 k 时复用
     # 基线是「不拆分」，得分记 0：轮廓系数为 0 正好表示簇内簇间没有区别，
     # 只有真的比 0 好才值得拆。原先基线取 -inf，两点的退化拆法（得分恰好 0）
     # 也会赢过基线，把同一个位置的点硬分成两簇。
-    best_score, best_k, best_labels = 0.0, 1, np.zeros(n, dtype=int)
+    best_score, best_k, best_labels, best_sse = 0.0, 1, np.zeros(n, dtype=int), 0.0
     for k in range(config.K_MIN, min(config.K_MAX, n) + 1):
-        labels, _ = kmeans(X, k)
+        labels, centers = kmeans(X, k)
         if len(np.unique(labels)) < 2:          # 退化成单簇不给高分
             score = -np.inf
         else:
             score = silhouette_score(D, labels) + config.DUNN_WEIGHT * dunn_index(D, labels)
         if score > best_score:
             best_score, best_k, best_labels = score, k, labels
-    return best_labels, best_k
+            best_sse = float(((X - centers[labels]) ** 2).sum())
+    return best_labels, best_k, best_sse
 
 
 def stage2_analysis(df=None):
@@ -136,11 +142,11 @@ def stage2_analysis(df=None):
     log(f"读入阶段1出行点: {len(df):,} 行, {df['imsi'].nunique()} 个用户")
 
     np.random.seed(config.RANDOM_STATE)         # 课时 36：固定种子，簇结果可复现
-    out_parts, chosen_ks = [], []
+    out_parts, chosen_ks, sses = [], [], []
     for imsi, g in df.groupby("imsi"):
         # 先投影成米再聚类：欧氏距离直接吃经纬度会把地图横向压扁 25%
         X = project_to_meters(g["lon"], g["lat"])
-        labels, best_k = choose_best_k(X)
+        labels, best_k, sse = choose_best_k(X)
 
         g = g.copy()
         g["cluster"] = labels
@@ -148,6 +154,7 @@ def stage2_analysis(df=None):
         g["is_single_cluster"] = g["cluster"].map(lambda c: 1 if size_map.get(c, 0) == 1 else 0)
         out_parts.append(g)
         chosen_ks.append(best_k)
+        sses.append(sse)
 
     result = pd.concat(out_parts, ignore_index=True)
     n_clusters = result.groupby(["imsi", "cluster"]).ngroups
@@ -155,6 +162,12 @@ def stage2_analysis(df=None):
     ks = pd.Series(chosen_ks)
     log(f"共形成 {n_clusters} 个簇（其中单点簇 {n_single} 个），"
         f"最优K分布: 最小{int(ks.min())} / 最大{int(ks.max())} / 平均{ks.mean():.1f}")
+    s = pd.Series(sses)
+    # 纪要 day1 的三件套：SSE 与邓恩、轮廓一起报告。SSE 对每个用户各自最优划分求和，
+    # 单位是米²，跨用户不可直接比（点数不同），所以看中位数而不是看总量。
+    log(f"聚类质量（逐用户最优划分）：SSE 中位 {s.median():,.0f} 米² / "
+        f"均值 {s.mean():,.0f} 米² / 最大 {s.max():,.0f} 米²，"
+        f"折算均方根簇内半径约 {np.sqrt(s.median()):,.0f} 米")
 
     save_csv(result, config.STAGE2_CLUSTER_FILE)
     return result
