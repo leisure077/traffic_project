@@ -36,6 +36,7 @@ PURPOSE_COLORS = {"居住": BLUE, "购物": ORANGE, "旅游": PURPLE, "其他": 
 MODE_COLORS = {"地铁": RED, "公交": BLUE, "小汽车": ORANGE, "其他": GRAY}
 SCATTER_3D_TOP = 5          # 3D 轨迹画点数最多的前 5 个用户
 HEATMAP_TOP = 10            # 热力矩阵取峰值最高的前 10 个商圈
+HEATMAP_LABEL_RATIO = 0.5   # 只在 >= 全表最大值一半的格子里写数字（示例图的画法）
 # 3D 轨迹的连线配色：五个人的线要能一眼分开，且不能和「红=出行、绿=驻留」撞色
 USER_COLORS = ["#9467bd", "#ff7f0e", "#1f77b4", "#8c564b", "#17becf"]
 
@@ -145,8 +146,11 @@ def plot_heatmap(heat_df):
     窗口计数取该小时内的峰值：一小时内有 60 个十分钟窗口，取最大那个代表这一小时最挤的程度。
     色标用的是**真实人次**而不是每行各自的最大值。之前按行归一化能把每个商圈的日内起伏都
     看清，但代价是棋盘山（峰值 10）和中街（峰值 215）会画得和太原街（峰值 2570）一样红，
-    读者按颜色估人数会高估十几倍。示例图同样是绝对刻度，这里跟过来更诚实；
-    小商圈看不出的起伏，用每格里的数字标签补回。
+    读者按颜色估人数会高估十几倍。示例图同样是绝对刻度，这里跟过来更诚实。
+
+    数字只写深色格（>= 全表最大值一半），与示例一致。之前每个非空格都标一遍，
+    棋盘山那行 7 个位数会把人眼引到本来没有人流的地方；行尾另起一列「峰值 X」更是
+    把 xlim 撑到 26.5、在矩阵右边拉出一条再没有内容的白边，示例图两者都没有。
     """
     t = pd.to_datetime(heat_df["time"])
     df = heat_df.assign(hour=t.dt.hour).dropna(subset=["hour"])
@@ -156,18 +160,19 @@ def plot_heatmap(heat_df):
     M = pivot.loc[top.index]
 
     values = M.to_numpy(dtype=float)
-    fig, ax = plt.subplots(figsize=(12, 1 + 1.1 * len(M)))
+    vmax = values.max()
+    fig, ax = plt.subplots(figsize=(11.5, 1 + 1.1 * len(M)))
     im = ax.imshow(values, aspect="auto", cmap="YlOrRd",
-                   vmin=0, vmax=values.max())
+                   vmin=0, vmax=vmax)
     ax.set_xticks(range(24), [f"{h}时" for h in range(24)], fontsize=8, rotation=60)
     ax.set_yticks(range(len(M)), M.index)
     for i, row in enumerate(values):
         for j, v in enumerate(row):
-            if v > 0:
-                ax.text(j, i, int(v), ha="center", va="center", fontsize=6.5,
-                        color="white" if v > values.max() * .6 else "#333333")
-        ax.text(23.7, i, f"峰值 {int(row.max()):,}", va="center", fontsize=8)
-    ax.set_xlim(-0.5, 26.5)
+            if v >= vmax * HEATMAP_LABEL_RATIO:
+                ax.text(j, i, f"{int(v):,}", ha="center", va="center",
+                        fontsize=7.5, color="white")
+    ax.set_xlim(-0.5, 23.5)
+    ax.set_ylim(len(M) - 0.5, -0.5)
     ax.set_xlabel("小时")
     ax.set_title(f"商圈 × 24 小时人流热力（{config.HEATMAP_WINDOW_SIZE} 分钟窗口内的峰值人次）")
     fig.colorbar(im, ax=ax, label="窗口累计人次", pad=0.02)
