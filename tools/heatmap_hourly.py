@@ -11,7 +11,8 @@ tools/heatmap_hourly.py —— 图5 的另一版热力图：按「每小时命�
 按小时求和会把每个人数 10 次。所以这里直接复用 heatmap.py 的读入与商圈匹配，
 在 rolling 之前按 (小时, 商圈) 计数。匹配口径一字未改：最近商圈、1000m 内才算命中。
 
-同时去掉原图右侧的「峰值 X」文字列和它撑出来的空白，数字只写深色格（示例做法）。
+同时去掉原图右侧的「峰值 X」文字列和它撑出来的空白，数字只写深色格（示例做法），
+行只留「商圈」两类（北站是交通枢纽、棋盘山/世博园是景区，与示例的两行同类别）。
 
 跑法：`python tools/heatmap_hourly.py` → result/figures/fig_heatmap_hourly.png
 """
@@ -33,8 +34,13 @@ LABEL_RATIO = 0.5                 # 只在 >= 全表最大值一半的格子里�
 
 
 def hourly_counts():
-    """复用热力模块的读入+商圈匹配，在 10 分钟滚动之前按 (商圈, 小时) 计数。"""
+    """复用热力模块的读入+商圈匹配，在 10 分钟滚动之前按 (商圈, 小时) 计数。
+
+    只保留名字以「商圈」结尾的行：沈阳北站是交通枢纽、棋盘山风景区和沈阳世博园是景区，
+    不属于商圈，与示例图5 的两行（太原街商圈、中街商圈）同一类别。
+    """
     stream = heatmap.match_business(heatmap.load_stream(), heatmap.load_business())
+    stream = stream[stream["biz_name"].str.endswith("商圈")]
     stream["hour"] = stream["time_dt"].dt.hour
     pivot = stream.groupby(["biz_name", "hour"]).size().unstack(fill_value=0)
     pivot = pivot.reindex(columns=range(24), fill_value=0)
