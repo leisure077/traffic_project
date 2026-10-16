@@ -70,7 +70,7 @@ STREAM_DATA_FILE = os.path.join(DATA_DIR, "实时流数据.csv")       # 256212 
 # ----------------------------------------------------------------------
 RAW_COLUMNS = ["time", "imsi", "lac_id", "cell_id"]  # 规则1：原始 10 列只取这 4 列
 TARGET_DATE = "20181003"          # 规则5：仅保留目标日
-RAW_TIMEZONE_OFFSET_HOURS = 8     # 规则4：原始为 UTC 毫秒时间戳，需 +8 小时
+RAW_TIMEZONE = "Asia/Shanghai"  # 规则4：原始是 UTC 毫秒戳，按 IANA 时区名转北京时间（纪要 day2：不写死 +8）
 MIN_POINTS_PER_USER = 20          # 规则9：当天点数 < 20 的稀疏用户剔除
 # 规则6：补完经纬度后过滤异常坐标。区间出自《项目指导会议纪要》day1「基站经纬度补全与
 # 坐标过滤」：经度 122.5~124.5、纬度 41.0~42.5。实测越界点 1,333 行（0.26%），最远

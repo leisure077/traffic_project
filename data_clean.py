@@ -61,6 +61,10 @@ def rule4_timestamp(df):
 
     原始 time 列是 13 位毫秒戳（UTC）。直接按 naive 解析等于把北京时间前移 8 小时，
     规则5 就会丢掉当天 0~8 点、混进次日凌晨，时段统计全部失真（课时 25）。
+
+    时区换算走 `tz_convert` 而不是 `+ pd.Timedelta(hours=8)`（纪要 day2 明确要求废弃写死做法）：
+    时区名自带夏令时与历史变更规则，写死的偏移量只会在此刻恰好对上。转完 `tz_localize(None)`
+    去掉 tz 标签，下游都按 naive 北京时间比较，留着 tz-aware 会让 concat 静默降级成 object。
     """
     before = len(df)
     raw = df["time"].astype(str).str.strip()
@@ -69,14 +73,14 @@ def rule4_timestamp(df):
     # 只写下界会把日期串当成毫秒戳去解 epoch，得出 2609 年这类荒谬时间。真实数据是 13 位毫秒戳。
     is_ms = (num.abs() >= 10 ** 12) & (num.abs() < 10 ** 13)
 
-    dt_ms = pd.to_datetime(raw[is_ms].astype("int64"), unit="ms", utc=True).dt.tz_localize(None) \
-        + pd.Timedelta(hours=config.RAW_TIMEZONE_OFFSET_HOURS)
+    dt_ms = pd.to_datetime(raw[is_ms].astype("int64"), unit="ms", utc=True) \
+        .dt.tz_convert(config.RAW_TIMEZONE).dt.tz_localize(None)
     dt_txt = pd.to_datetime(raw[~is_ms], format="%Y%m%d%H%M%S", errors="coerce")
     df["time_dt"] = pd.concat([dt_ms, dt_txt]).sort_index()
 
     df = df.dropna(subset=["time_dt"])
     df["time"] = df["time_dt"].dt.strftime("%Y%m%d%H%M%S")
-    log(f"规则4 毫秒UTC时间戳 +{config.RAW_TIMEZONE_OFFSET_HOURS}时区 转换完成，"
+    log(f"规则4 毫秒UTC时间戳 → {config.RAW_TIMEZONE} 转换完成，"
         f"示例: {df['time'].iloc[0]}（{before - len(df)} 行时间不可解析被删除）")
     return df
 

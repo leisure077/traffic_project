@@ -69,11 +69,11 @@ class TestTime(unittest.TestCase):
         for h in (7, 8, 12, 19):
             self.assertFalse(is_night(h), f"{h} 点不应属夜间")
 
-    def test_ms_timestamp_shifts_by_8_hours(self):
-        """13 位 UTC 毫秒戳必须 +8 小时变北京时间；去掉 +8 这条就红。"""
+    def test_utc_ms_converts_to_beijing(self):
+        """13 位 UTC 毫秒戳必须转成北京时间；去掉 tz_convert 这条就红。"""
         beijing = pd.Timestamp("2018-10-03 00:41:22")
-        utc_ms = int((beijing - pd.Timedelta(hours=config.RAW_TIMEZONE_OFFSET_HOURS))
-                     .value // 10 ** 6)
+        utc_ms = int(beijing.tz_localize(config.RAW_TIMEZONE)
+                     .tz_convert("UTC").value // 10 ** 6)
         df = pd.DataFrame({"time": [str(utc_ms)]})
         out = data_clean.rule4_timestamp(df.copy())
         self.assertEqual(out["time"].iloc[0], "20181003004122")
