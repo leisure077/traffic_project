@@ -5,7 +5,7 @@ data_clean.py —— 流水线第 1 步：数据清洗（课时 23~29，9 条规
 入口 `clean_data()`：读原始信令 → 9 条规则 → 产出 cleaned_data.csv（六列）。
 
   规则1 字段抽取      10 列无表头，只取前 4 列（time 列此刻还是毫秒时间戳）
-  规则2 去脏 imsi     混入 # * ^ 空格 等字符的记录剔除
+  规则2 去脏 imsi     非 15~20 位纯数字的记录剔除（含空串、NaN、混入 # * ^ 空格）
   规则3 去空基站编号  lac_id / cell_id 为 NaN 或空串/全空格的剔除
   规则4 时间戳转换    13 位毫秒 UTC 时间戳 → 北京时间 datetime + YYYYMMDDHHMMSS 字符串
   规则5 目标日过滤    只留 config.TARGET_DATE（漏 +8 会把凌晨的点当成前一天的删掉）
@@ -35,10 +35,15 @@ def read_raw():
 
 
 def rule2_dirty_imsi(df):
-    """规则2：imsi 里混入 # * ^ 空格等字符的记录剔除（课时 24：正则字符集 + 取反）。"""
+    """规则2：imsi 必须是 15~20 位纯数字，其余一律剔除（课时 24；口径出自纪要 day1）。
+
+    原先只剔含 # * ^ 空白 的行，漏了两种：imsi 为空串/NaN 的（正则匹配不到任何字符，
+    所以"不含脏字符"反而让它通过），以及位数不合规的。空 imsi 的那 15 行会一路活到
+    规则9，中途还自成一个"用户"参与分组统计，最后才因点数不足被删——绕了一大圈。
+    """
     before = len(df)
-    df = df[~df["imsi"].str.contains(r"[#*^\s]", na=False, regex=True)]
-    log(f"规则2 去脏imsi：{before:,} -> {len(df):,}（删除 {before - len(df)}）")
+    df = df[df["imsi"].str.fullmatch(r"\d{15,20}", na=False)]
+    log(f"规则2 去脏imsi（非15~20位纯数字）：{before:,} -> {len(df):,}（删除 {before - len(df)}）")
     return df
 
 
