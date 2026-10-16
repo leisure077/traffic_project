@@ -2,7 +2,8 @@
 """
 heatmap.py —— 商圈实时热力：10 分钟滑动窗口人流量（课时 51~54）
 
-入口 `heatmap_analysis()`：读 实时流数据.csv + 商业区数据.csv → 产出 heatmap_result.csv。
+入口 `heatmap_analysis()`：读 实时流数据.csv + 商业区数据.csv → 产出 heatmap_result.csv
+（10 分钟窗口长表）和 heat_hourly.csv（商圈 × 24 小时真实人次，图5 用它）。
 
   1. 读实时流：真实文件是 4 列、已自带经纬度（原讲义说只有 3 列要关联基站，以真实数据为准），
      过滤目标日、解析时间；
@@ -84,6 +85,25 @@ def match_business(stream, biz):
     return stream
 
 
+def hourly_counts(stream):
+    """按 (商圈, 小时) 统计真实命中人次——图5 画的就是这张表。
+
+    必须在 rolling_window 之前算：heatmap_result.csv 里一小时有 60 个互相重叠的 10 分钟
+    窗口，按小时加起来等于每个人被数 10 次。匹配口径与长表完全一致（最近商圈、阈值内才算命中）。
+    行不做类别筛选：Day10 规定图5 是「Top10 商圈 × 24 小时」，商圈表一共 5 个商圈，全给。
+    """
+    s = stream.copy()
+    s["hour"] = s["time_dt"].dt.hour
+    pivot = s.groupby(["biz_name", "hour"]).size().unstack(fill_value=0)
+    pivot = pivot.reindex(columns=range(24), fill_value=0)
+    pivot["全天合计"] = pivot.sum(axis=1)
+    # 商圈名还原成普通列：utils.save_csv 写 index=False，留着索引会只存数字，认不出谁是谁
+    pivot = pivot.sort_values("全天合计", ascending=False).reset_index()
+    log(f"小时命中表：{pivot.shape[0]} 个商圈 × 24 小时，"
+        f"全天合计 {int(pivot['全天合计'].sum()):,} 人次")
+    return pivot
+
+
 def rolling_window(stream):
     """课时 53：分钟×商圈计数 → 补齐 1440 分钟 → 10 分钟滑动求和 → 转长表。"""
     stream = stream.copy()
@@ -105,9 +125,10 @@ def rolling_window(stream):
 
 
 def heatmap_analysis():
-    """执行实时热力分析，保存 heatmap_result.csv 并返回长表。"""
+    """执行实时热力分析，保存 heatmap_result.csv（长表）+ heat_hourly.csv（图5 用），返回长表。"""
     log_step(7, f"实时热力分析（{config.HEATMAP_WINDOW_SIZE} 分钟滑动窗口 × 商圈）")
     stream = match_business(load_stream(), load_business())
+    save_csv(hourly_counts(stream), config.HEAT_HOURLY_FILE)   # 趁窗口还没滚，先把人次数出来
     result = rolling_window(stream)
 
     peak = result.groupby("biz_name")["count"].max().sort_values(ascending=False)

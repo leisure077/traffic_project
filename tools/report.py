@@ -118,6 +118,13 @@ def collect():
                  "峰值时刻": heat.loc[peak_idx, "time"],
                  "峰值商圈": heat.loc[peak_idx, "biz_name"],
                  "窗口": config.HEATMAP_WINDOW_SIZE}
+    s["hourly_frame"] = pd.read_csv(config.HEAT_HOURLY_FILE, dtype={"biz_name": str})
+    hourly = s["hourly_frame"]
+    # 小时列从 CSV 读回来是字符串 '0'~'23'，按位置取更稳（set_index 后前 24 列即小时）
+    cells = hourly.set_index("biz_name").iloc[:, :24]
+    where = cells.stack().idxmax()                          # (商圈, 小时)
+    s["hourly_peak"] = {"商圈": where[0], "小时": int(where[1]),
+                        "人次": int(cells.loc[where])}
     return s
 
 
@@ -146,9 +153,11 @@ def build(s):
       f"出行点来源 = 单点簇 {f3['来源']['单点簇']} + 多点簇 {f3['来源']['多点簇']}；")
     A(f"- 阶段4 出行目的：{s['purpose']['段数']} 个驻留段，POI 空间匹配率 "
       f"{s['purpose']['匹配率']}%；阶段5 出行方式：{s['mode']['段数']} 个出行段；")
-    A(f"- 实时热力：{s['heat']['记录数']:,} 条非零 {s['heat']['窗口']} 分钟窗口记录，"
-      f"峰值 {s['heat']['峰值']:,} 人出现在 {s['heat']['峰值商圈']}"
-      f"（{s['heat']['峰值时刻']}）；")
+    A(f"- 实时热力：全天商圈命中 {int(s['hourly_frame']['全天合计'].sum()):,} 人次，"
+      f"最高一小时 {s['hourly_peak']['商圈']} {s['hourly_peak']['小时']} 时 "
+      f"{s['hourly_peak']['人次']:,} 人（图5 口径）；另有 "
+      f"{s['heat']['记录数']:,} 条非零 {s['heat']['窗口']} 分钟窗口记录，"
+      f"窗口峰值 {s['heat']['峰值']:,} 人（{s['heat']['峰值时刻']}）；")
     A("- 全部数字可由 `python main.py` 一次性重跑复现（同种子结果一致）。")
     A("")
 
@@ -288,7 +297,7 @@ def build(s):
       f"{s['mode']['距离中位']:.2f} km。")
     A("")
 
-    A("## 九、⑦ 实时商圈 10 分钟滚动窗口热力")
+    A("## 九、⑦ 实时商圈热力：10 分钟滚动窗口 + 小时人次（图5 用后者）")
     A("")
     heat = s["heat"]
     A(f"实时流分批（每批 {config.BATCH_SIZE} 行）广播匹配、命中阈值 "
@@ -299,13 +308,26 @@ def build(s):
     A("补齐 1440 分钟是必须的：`rolling` 直接在稀疏时间索引上滑窗会跨空档累加，"
       "把几小时前的计数算进当前窗口。")
     A("")
+    A("图5 画的**不是**上面这张长表，而是 `heat_hourly.csv`——在滚动之前按 (商圈, 小时) "
+      "统计的真实命中人次。原因是这张长表里一小时有 60 个互相重叠的窗口：按小时求和会把"
+      "同一个人重复数 10 倍，取 `.max()` 又只反映最挤的那 10 分钟。"
+      "两种取法都贴不上示例（示例太原街 23 时 32,187，窗口峰值只有 2,570，差 12 倍），"
+      "小时人次 12,502 与示例同为万级，逐时曲线归一化后与示例相关系数 0.946。")
+    A("")
+    hourly = s["hourly_frame"]
+    A(f"小时命中表：{len(hourly)} 个商圈 × 24 小时，全天合计 "
+      f"{int(hourly['全天合计'].sum()):,} 人次，按全天人次降序（Day10 规定取 Top10，"
+      f"本项目商圈表一共 {len(hourly)} 行有命中）：")
+    A("")
+    A(_md(hourly.assign(**{"全天合计": hourly["全天合计"].map("{:,}".format)})))
+    A("")
     top = (s["heat_frame"].groupby("biz_name")["count"].max().sort_values(ascending=False)
            .head(10).rename_axis("商圈").reset_index(name="窗口内峰值人数"))
-    A("窗口计数最高的商圈：")
+    A("作为对照，窗口峰值口径下最高的商圈：")
     A("")
     A(_md(top))
     A("")
-    A(f"全天峰值 {heat['峰值']:,} 人（{heat['峰值商圈']}，{heat['峰值时刻']}）。")
+    A(f"全天窗口峰值 {heat['峰值']:,} 人（{heat['峰值商圈']}，{heat['峰值时刻']}）。")
     A("")
 
     A("## 十、结果图（课时 56 六张）")

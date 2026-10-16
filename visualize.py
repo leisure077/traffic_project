@@ -2,7 +2,7 @@
 """
 visualize.py —— 六张结果可视化（课时 55~56）
 
-入口 `visualize_all()`：一次读五张结果表（阶段3标签 / 阶段2簇 / 目的 / 方式 / 热力），
+入口 `visualize_all()`：一次读五张结果表（阶段3标签 / 阶段2簇 / 目的 / 方式 / 小时命中表），
 生成六张必交 PNG，外加两张附加 PNG。
 
   1 fig_stage3_pie    出行/驻留占比      —— 一天里移动点和停留点各占多少
@@ -35,7 +35,7 @@ ORANGE, PURPLE, GRAY = "#ff7f0e", "#9467bd", "gray"
 PURPOSE_COLORS = {"居住": BLUE, "购物": ORANGE, "旅游": PURPLE, "其他": GRAY}
 MODE_COLORS = {"地铁": RED, "公交": BLUE, "小汽车": ORANGE, "其他": GRAY}
 SCATTER_3D_TOP = 5          # 3D 轨迹画点数最多的前 5 个用户
-HEATMAP_TOP = 10            # 热力矩阵取峰值最高的前 10 个商圈
+HEATMAP_TOP = 10            # 热力矩阵取全天人次最高的前 10 个商圈（本项目商圈表一共 5 个）
 HEATMAP_LABEL_RATIO = 0.5   # 只在 >= 全表最大值一半的格子里写数字（示例图的画法）
 # 3D 轨迹的连线配色：五个人的线要能一眼分开，且不能和「红=出行、绿=驻留」撞色
 USER_COLORS = ["#9467bd", "#ff7f0e", "#1f77b4", "#8c564b", "#17becf"]
@@ -141,41 +141,43 @@ def plot_mode_bar(mode_df):
 
 
 def plot_heatmap(heat_df):
-    """图5：Top10 商圈 × 24 小时热力矩阵，按绝对人次上色（对齐讲义示例）。
+    """图5：Top10 商圈 × 24 小时热力矩阵，格子里是**该小时的真实命中人次**，按绝对人次上色。
 
-    窗口计数取该小时内的峰值：一小时内有 60 个十分钟窗口，取最大那个代表这一小时最挤的程度。
-    色标用的是**真实人次**而不是每行各自的最大值。之前按行归一化能把每个商圈的日内起伏都
-    看清，但代价是棋盘山（峰值 10）和中街（峰值 215）会画得和太原街（峰值 2570）一样红，
-    读者按颜色估人数会高估十几倍。示例图同样是绝对刻度，这里跟过来更诚实。
+    数值来自 heat_hourly.csv，它在 10 分钟滑动窗口之前统计（见 `heatmap.hourly_counts`）。
+    之前这里直接吃 heatmap_result.csv，两种取法都不对：按小时求和会把同一个人重复数 10 次
+    （一小时 60 个互相重叠的窗口），取 .max() 又只反映最挤的那一格——太原街 23 时 2,570，
+    而示例同一格 32,187，差 12 倍。两张图画的本就不是一个量，不是数据差那么多。
+    换成小时人次后太原街 23 时 = 12,502，与示例同为万级，逐时曲线归一化后与示例 r=0.946。
 
-    数字只写深色格（>= 全表最大值一半），与示例一致。之前每个非空格都标一遍，
-    棋盘山那行 7 个位数会把人眼引到本来没有人流的地方；行尾另起一列「峰值 X」更是
-    把 xlim 撑到 26.5、在矩阵右边拉出一条再没有内容的白边，示例图两者都没有。
+    色标全表共用绝对刻度，不按行归一化：否则棋盘山（全天 79）会画得和太原街（13 万）一样红。
+    数字只写深色格（>= 全表最大值一半），示例图就是这个画法；行尾不加「峰值 X」列，
+    那列文字会把 xlim 撑出去、在矩阵右边拉出一条再没有内容的白边。
     """
-    t = pd.to_datetime(heat_df["time"])
-    df = heat_df.assign(hour=t.dt.hour).dropna(subset=["hour"])
-    pivot = df.groupby(["biz_name", "hour"])["count"].max().unstack(fill_value=0)
-    pivot = pivot.reindex(columns=range(24), fill_value=0)
-    top = pivot.max(axis=1).sort_values(ascending=False).head(HEATMAP_TOP)
-    M = pivot.loc[top.index]
+    heat_df = heat_df.sort_values("全天合计", ascending=False).head(HEATMAP_TOP)
+    names = heat_df["biz_name"]
+    M = heat_df.drop(columns=["biz_name", "全天合计"])
 
     values = M.to_numpy(dtype=float)
     vmax = values.max()
-    fig, ax = plt.subplots(figsize=(11.5, 1 + 1.1 * len(M)))
+    fig, ax = plt.subplots(figsize=(11.5, 1.45 * len(M) + 1.2))
     im = ax.imshow(values, aspect="auto", cmap="YlOrRd",
                    vmin=0, vmax=vmax)
     ax.set_xticks(range(24), [f"{h}时" for h in range(24)], fontsize=8, rotation=60)
-    ax.set_yticks(range(len(M)), M.index)
+    ax.set_yticks(range(len(M)), names)
     for i, row in enumerate(values):
         for j, v in enumerate(row):
             if v >= vmax * HEATMAP_LABEL_RATIO:
-                ax.text(j, i, f"{int(v):,}", ha="center", va="center",
+                # 不加千分位：一格只有 50 像素宽，"10,864" 会和隔壁的 "12,502" 挤成
+                # 一个十位数。示例图同样是裸数字。
+                ax.text(j, i, int(v), ha="center", va="center",
                         fontsize=7.5, color="white")
     ax.set_xlim(-0.5, 23.5)
     ax.set_ylim(len(M) - 0.5, -0.5)
     ax.set_xlabel("小时")
-    ax.set_title(f"商圈 × 24 小时人流热力（{config.HEATMAP_WINDOW_SIZE} 分钟窗口内的峰值人次）")
-    fig.colorbar(im, ax=ax, label="窗口累计人次", pad=0.02)
+    ax.set_ylabel("商圈")
+    ax.set_title(f"商圈 × 24 小时人流热力（每小时命中人次，商圈 "
+                 f"{config.HEATMAP_MATCH_THRESHOLD}m 内）")
+    fig.colorbar(im, ax=ax, label="小时命中人次", pad=0.02)
     _save(fig, config.FIG_HEATMAP)
 
 
@@ -343,8 +345,8 @@ def visualize_all():
     label_df["lat"] = pd.to_numeric(label_df["lat"], errors="coerce")
     purpose_df = read_csv(config.PURPOSE_RESULT_FILE, dtype={"imsi": str})
     mode_df = read_csv(config.MODE_RESULT_FILE, dtype={"imsi": str})
-    heat_df = read_csv(config.HEATMAP_RESULT_FILE)
-    heat_df["count"] = pd.to_numeric(heat_df["count"], errors="coerce")
+    heat_df = read_csv(config.HEAT_HOURLY_FILE)
+    heat_df["全天合计"] = pd.to_numeric(heat_df["全天合计"], errors="coerce")
     cluster_df = read_csv(config.STAGE2_CLUSTER_FILE, dtype={"imsi": str, "time": str})
     cluster_df["cluster"] = pd.to_numeric(cluster_df["cluster"], errors="coerce")
 

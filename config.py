@@ -142,6 +142,10 @@ STAGE3_LABEL_FILE = os.path.join(RESULT_DIR, "stage3_label.csv")
 PURPOSE_RESULT_FILE = os.path.join(RESULT_DIR, "purpose_result.csv")
 MODE_RESULT_FILE = os.path.join(RESULT_DIR, "mode_result.csv")
 HEATMAP_RESULT_FILE = os.path.join(RESULT_DIR, "heatmap_result.csv")
+# 图5 用的是这张而不是上面那张：heatmap_result.csv 存的是 60 个互相重叠的 10 分钟窗口，
+# 按小时相加会把同一个人重复数 10 次。小时人次必须在 rolling 之前统计，见 heatmap.hourly_counts。
+# 它是图5 的中间表，不在课时 57 要核对的 7 个交付 CSV 之列。
+HEAT_HOURLY_FILE = os.path.join(RESULT_DIR, "heat_hourly.csv")
 
 RESULT_CSVS = [
     ("清洗数据", CLEANED_DATA_FILE),
