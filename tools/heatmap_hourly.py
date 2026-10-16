@@ -12,7 +12,8 @@ tools/heatmap_hourly.py —— 图5 的另一版热力图：按「每小时命�
 在 rolling 之前按 (小时, 商圈) 计数。匹配口径一字未改：最近商圈、1000m 内才算命中。
 
 同时去掉原图右侧的「峰值 X」文字列和它撑出来的空白，数字只写深色格（示例做法），
-行只留「商圈」两类（北站是交通枢纽、棋盘山/世博园是景区，与示例的两行同类别）。
+行按全天人次降序给出全部商圈（Day10 规定「Top10 商圈 × 24 小时」，本项目的商业区
+静态表一共只有 5 个商圈，因此 Top10 = 全给，不做类别筛选）。
 
 跑法：`python tools/heatmap_hourly.py` → result/figures/fig_heatmap_hourly.png
 """
@@ -36,22 +37,25 @@ LABEL_RATIO = 0.5                 # 只在 >= 全表最大值一半的格子里�
 def hourly_counts():
     """复用热力模块的读入+商圈匹配，在 10 分钟滚动之前按 (商圈, 小时) 计数。
 
-    只保留名字以「商圈」结尾的行：沈阳北站是交通枢纽、棋盘山风景区和沈阳世博园是景区，
-    不属于商圈，与示例图5 的两行（太原街商圈、中街商圈）同一类别。
+    行不做类别筛选：Day10 的图5 规定是「Top10 商圈 × 24 小时」，本项目的商业区表
+    一共 5 个商圈，全部给出即可。上一版按名字以「商圈」结尾筛掉北站和景区，是为了
+    贴示例的两行而主动少交，与讲义冲突。
     """
     stream = heatmap.match_business(heatmap.load_stream(), heatmap.load_business())
-    stream = stream[stream["biz_name"].str.endswith("商圈")]
     stream["hour"] = stream["time_dt"].dt.hour
     pivot = stream.groupby(["biz_name", "hour"]).size().unstack(fill_value=0)
     pivot = pivot.reindex(columns=range(24), fill_value=0)
     pivot["全天合计"] = pivot.sum(axis=1)
     pivot = pivot.sort_values("全天合计", ascending=False)
+    # 商圈名还原成普通列：utils.save_csv 写 index=False，留着索引会只存数字，CSV 认不出谁是谁
+    pivot = pivot.reset_index()
     log(f"小时命中表：{pivot.shape[0]} 个商圈 × 24 小时，全天合计 {int(pivot['全天合计'].sum()):,} 人次")
     return pivot
 
 
 def plot(pivot):
-    M = pivot.drop(columns="全天合计")
+    names = pivot["biz_name"]
+    M = pivot.drop(columns=["全天合计", "biz_name"])
     values = M.to_numpy(dtype=float)
     vmax = values.max()
 
@@ -59,7 +63,7 @@ def plot(pivot):
     fig, ax = plt.subplots(figsize=(11.5, 1.45 * len(M) + 1.2))
     im = ax.imshow(values, aspect="auto", cmap="YlOrRd", vmin=0, vmax=vmax)
     ax.set_xticks(range(24), [f"{h}时" for h in range(24)], fontsize=8, rotation=60)
-    ax.set_yticks(range(len(M)), M.index)
+    ax.set_yticks(range(len(M)), names)
     for i, row in enumerate(values):
         for j, v in enumerate(row):
             if v >= vmax * LABEL_RATIO:
