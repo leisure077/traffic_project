@@ -26,17 +26,38 @@ traffic_project/
 ├── heatmap.py       # ⑦ 实时热力
 ├── visualize.py     # ⑧ 可视化6张必交图 + 2张附加图
 ├── main.py          # 一键运行全部8个模块
-├── test_utils.py    # 课时58：unittest 26 项（haversine / 手写kmeans / 选K基线 / 低频点保留 / 出发地同标 / 毫秒+8时区）
-├── requirements.txt
+├── test_utils.py    # 课时58：unittest 26 项（haversine / 手写kmeans / 选K基线 / 低频点保留 / 出发地同标 / UTC→北京时间）
+├── requirements.txt # 跑流水线只要这一份
+├── requirements-dev.txt # 开发期依赖（tabulate 等），没装也能跑
 ├── README.md
+├── .gitignore       # 哪些东西刻意不进 git，见下一节
 ├── tools/           # 可选工具，不在 8 模块链里
 │   ├── selfcheck.py #    交付前 6 项自检
 │   └── report.py    #    由 7 个结果 CSV 重建总结报告
 └── result/
     ├── cleaned_data.csv / stage1_travel_points.csv / stage2_cluster.csv
-    ├── stage3_label.csv / purpose_result.csv / mode_result.csv / heatmap_result.csv
+    ├── stage3_label.csv / purpose_result.csv / mode_result.csv
+    ├── heatmap_result.csv / heat_hourly.csv
+    ├── 项目总结报告.md
     └── figures/     # 6 张必交 PNG + 2 张附加 PNG
 ```
+
+### 仓库里放什么、本地放什么
+
+上面的骨架是**讲义要求的最小集**，我们额外留下了 `test_utils.py` 和 `tools/`
+（26 项单测 + 6 项交付自检 + 报告重建，答辩要现场演示"怎么证明结果没跑歪"就靠它们）。
+其余一律只留在本地，靠 `.gitignore` 按**理由**分五组挡在门外：
+
+| 不入库的东西 | 为什么不进 git |
+|---|---|
+| `相关数据/`、`result/*.csv` | 逐点信令带 `imsi`（手机号级身份标识），老师明确要求不公开 |
+| `result/*.docx`、`result/~$*` | 实验报告首页有学号姓名；`~$` 是 Word 打开时的临时锁文件 |
+| `Markdown/`、`PDF/` | 老师发的课件（10MB），不是本项目产出，入库只会把仓库撑肥 |
+| `交通时空大数据分析系统 - 副本/`、`_cmp/`、`_exp/` | 对照实验现场：组员整套系统 499MB、示例图与中间结果，只用于自查 |
+| `__pycache__/`、`.venv/`、`.idea/` | 工具产物 |
+
+**这些文件在本地一个都没删**，只是不再被 git 跟踪；课件如需回溯历史版本，
+它们在 `git log` 里仍然完整存在（本次整理前的最后一次跟踪提交即 `11f48b7`）。
 
 数据目录（`原始数据.csv` 等 6 个输入文件）**不放在项目内**：`config.py` 的
 `_find_data_dir()` 按下面的顺序找，第一个含 `原始数据.csv` 的目录即命中：
