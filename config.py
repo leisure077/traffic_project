@@ -72,6 +72,11 @@ RAW_COLUMNS = ["time", "imsi", "lac_id", "cell_id"]  # 规则1：原始 10 列�
 TARGET_DATE = "20181003"          # 规则5：仅保留目标日
 RAW_TIMEZONE_OFFSET_HOURS = 8     # 规则4：原始为 UTC 毫秒时间戳，需 +8 小时
 MIN_POINTS_PER_USER = 20          # 规则9：当天点数 < 20 的稀疏用户剔除
+# 规则6：补完经纬度后过滤异常坐标。区间出自《项目指导会议纪要》day1「基站经纬度补全与
+# 坐标过滤」：经度 122.5~124.5、纬度 41.0~42.5。实测越界点 1,333 行（0.26%），最远
+# lat 43.15 已在沈阳以北约 200km，属基站定位漂移，留着会把阶段2 的簇心拖偏。
+SIGNAL_LON_RANGE = (122.5, 124.5)
+SIGNAL_LAT_RANGE = (41.0, 42.5)
 SAMPLE_ROWS = 20000               # 课时 28：整用户抽样目标行数；0 = 不抽样
 RANDOM_STATE = 42                 # 抽样与聚类的统一随机种子
 
@@ -194,7 +199,8 @@ if __name__ == "__main__":
     print("-" * 60)
     print(f"目标日期 TARGET_DATE = {TARGET_DATE}")
     print(f"抽样行数 SAMPLE_ROWS = {SAMPLE_ROWS}（0 表示全量）")
-    print(f"清洗     低频点<{LOW_FREQ_THRESHOLD}次 ｜ 出行速度>{SPEED_THRESHOLD}km/h ｜ 异常速度>{ABNORMAL_SPEED}km/h")
+    print(f"清洗     低频点<{LOW_FREQ_THRESHOLD}次 ｜ 出行速度>{SPEED_THRESHOLD}km/h ｜ 异常速度>{ABNORMAL_SPEED}km/h ｜ "
+          f"坐标限经度{SIGNAL_LON_RANGE[0]}~{SIGNAL_LON_RANGE[1]}、纬度{SIGNAL_LAT_RANGE[0]}~{SIGNAL_LAT_RANGE[1]}")
     print(f"聚类     K={K_MIN}~{K_MAX} ｜ max_iter={KM_MAX_ITER} tol={KM_TOL} ｜ "
           f"score=轮廓+{DUNN_WEIGHT}×邓恩 ｜ seed={RANDOM_STATE}")
     print(f"精判     三点距簇心<{CLUSTER_DIST_THRESHOLD}m 且 首末跨度<{TIME_SPAN_THRESHOLD}h → 驻留")

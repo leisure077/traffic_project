@@ -10,7 +10,8 @@ data_clean.py —— 流水线第 1 步：数据清洗（课时 23~29，9 条规
   规则4 时间戳转换    13 位毫秒 UTC 时间戳 → 北京时间 datetime + YYYYMMDDHHMMSS 字符串
   规则5 目标日过滤    只留 config.TARGET_DATE（漏 +8 会把凌晨的点当成前一天的删掉）
  （教学抽样）         课时 28：按整用户抽样约 SAMPLE_ROWS 行，不是随机抽行
-  规则6 关联基站      laci = lac_id-cell_id，左连接基站表补 lon/lat，匹配失败删除
+  规则6 关联基站      laci = lac_id-cell_id，左连接基站表补 lon/lat，匹配失败删除，
+                     再按沈阳经纬度区间（122.5~124.5 / 41.0~42.5）剔除漂移坐标
   规则7 排序          按 imsi、time 升序，保证后续 shift/diff 取到的是同一用户的相邻点
   规则8 分钟去重      同一用户同一分钟的多条上报只留第一条（基站乒乓切换去噪）
   规则9 稀疏用户过滤  当天点数 < MIN_POINTS_PER_USER 的用户整体剔除
@@ -121,7 +122,12 @@ def sample_by_user(df):
 
 
 def rule6_join_station(df):
-    """规则6：拼 laci 左连接基站表补经纬度（真实列序 lon,lat,laci）。"""
+    """规则6：拼 laci 左连接基站表补经纬度（真实列序 lon,lat,laci），再过滤沈阳范围外的异常坐标。
+
+    坐标过滤出自《项目指导会议纪要》day1 的同一条规则（"基站经纬度补全与坐标过滤"）：
+    实测目标日有 1,333 行（0.26%）落在 经度122.5~124.5 / 纬度41.0~42.5 之外，最远的
+    lat 到 43.15——那是定位漂移出来的异地基站，留着会把该用户阶段2 的簇心拖偏上百公里。
+    """
     before = len(df)
     station = pd.read_csv(config.STATION_DATA_FILE, header=None,
                           names=["lon", "lat", "laci"], dtype=str)
@@ -136,7 +142,14 @@ def rule6_join_station(df):
     df = df.dropna(subset=["lon", "lat"]).reset_index(drop=True)
     df["lon"] = df["lon"].astype(float)
     df["lat"] = df["lat"].astype(float)
+
+    in_box = (df["lon"].between(*config.SIGNAL_LON_RANGE)
+              & df["lat"].between(*config.SIGNAL_LAT_RANGE))
+    outside = int((~in_box).sum())
+    users_hit = df.loc[~in_box, "imsi"].nunique()
+    df = df[in_box].reset_index(drop=True)
     log(f"规则6 基站关联：{before:,} -> {len(df):,}（关联失败删除 {unmatched} 行，"
+        f"坐标越界删除 {outside} 行 / 涉及 {users_hit} 用户，"
         f"基站表去重后 {len(station):,} 个 laci）")
     return df
 
