@@ -2,8 +2,9 @@
 """
 test_utils.py —— 课时 58 §三.4 建议优先测试的纯函数
 
-覆盖五组：haversine（同点为0/单位换算/已知距离）、kmeans（两团能分开、中心不出 NaN、
+覆盖六组：haversine（同点为0/单位换算/已知距离）、kmeans（两团能分开、中心不出 NaN、
 同坐标不拆簇）、choose_best_k（全同点不拆 / 真远点仍拆）、mark_low_freq（低频点保留且算得出速度）、
+select_travel_points（出发地与到达点同标、末点不回头标）、
 decide_purpose（居住/购物/旅游/其他 + 窗口覆盖 bug 回归）、毫秒时间戳 +8 转换。
 
 跑法：
@@ -182,6 +183,32 @@ class TestDecidePurpose(unittest.TestCase):
 
     def test_outside_all_windows_is_other(self):
         self.assertEqual(decide_purpose(self._row(start_hour=7, end_hour=23)), "其他")
+
+
+class TestSelectTravelPoints(unittest.TestCase):
+    """阶段1 粗筛口径：一次移动的出发点和到达点都要标出来，末点不回头标。"""
+
+    def _run(self, offsets_km):
+        """按「相对上一点挪了多少公里」造一条单用户轨迹，每步 10 分钟（=6km 一档）。"""
+        home_lat, home_lon = 41.8052, 123.4119
+        rows = []
+        lat = home_lat
+        for i, km in enumerate(offsets_km):
+            lat += km / 111.32
+            rows.append(dict(imsi="u1", lon=home_lon, lat=lat))
+        df = pd.DataFrame(rows)
+        df["time_dt"] = pd.date_range("2018-10-03 08:00", periods=len(df), freq="10min")
+        return tr_stage1.select_travel_points(tr_stage1.compute_speed(df))
+
+    def test_departure_point_is_marked(self):
+        """第二段挪 5km（30km/h）：它的出发地那一段虽然自己没动，也要一起标成疑似出行。"""
+        out = self._run([0.0, 5.0, 0.0])
+        self.assertEqual(out["is_travel_stage1"].tolist(), [True, True, False])
+
+    def test_last_point_never_marked_as_departure(self):
+        """第一段挪 5km、第二段原地不动：只有移动的两端（点0、点1）算出行，末点不回头标。"""
+        out = self._run([0.0, 0.0, 5.0])
+        self.assertEqual(out["is_travel_stage1"].tolist(), [False, True, True])
 
 
 class TestMarkLowFreq(unittest.TestCase):

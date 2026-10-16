@@ -90,6 +90,8 @@ def collect():
                   "坐标数": cleaned["lon"].round(4).nunique(),
                   "时间范围": f"{cleaned['time'].min()} ~ {cleaned['time'].max()}"}
     s["stage1"] = {"出行点数": len(s1), "占清洗点%": round(len(s1) / len(cleaned) * 100, 1),
+                   # 表里 speed 存了两位小数，用半个最小单位兜住舍入，否则和阶段1 日志差 2 个点
+                   "到达点": int((s1["speed"] > config.SPEED_THRESHOLD - 0.005).sum()),
                    "速度中位": float(s1["speed"].median()),
                    "速度最大": float(s1["speed"].max())}
     s["stage2"] = {"用户数": s2["imsi"].nunique(), "簇数": len(clusters),
@@ -156,7 +158,7 @@ def build(s):
     A("config.py       全部路径与阈值（改参数只改这里，python config.py 自检输入文件）")
     A("utils.py        Haversine / pairwise 欧氏 / 计时器 / 中文字体 / 读写 / 日志")
     A("data_clean.py   ① 九条清洗规则 + 整用户抽样")
-    A("tr_stage1.py    ② 阶段1：低频点标记（不删） + 连续段 + 相邻点速度粗筛")
+    A("tr_stage1.py    ② 阶段1：低频点标记（不删） + 连续段 + 速度粗筛（到达点与出发地同标）")
     A("tr_stage2.py    ③ 阶段2：手写 K-Means + 轮廓系数&邓恩指数选 K")
     A("tr_stage3.py    ④ 阶段3：三点距离 + 首末时间跨度规则精判")
     A("purpose.py      ⑤ 出行目的：POI 空间证据 + 时间窗兜底")
@@ -200,8 +202,11 @@ def build(s):
     A("")
     A(f"- 低频点（同用户同坐标出现 < {config.LOW_FREQ_THRESHOLD} 次）只打 is_low 标记、**不删行**"
       f"（讲义口径是删除，本项目实测删除会连带删掉 83.7% 的高速移动点，见 README 七）；")
-    A(f"- 相邻点速度 > {config.SPEED_THRESHOLD} km/h 判疑似出行，得到 "
-      f"{f1['出行点数']:,} 个出行点（占清洗点 {f1['占清洗点%']}%）；")
+    A(f"- 相邻点速度 > {config.SPEED_THRESHOLD} km/h 的到达点 {f1['到达点']:,} 个，"
+      f"再把每次移动的**出发地那一点**一并算作疑似出行（多 "
+      f"{f1['出行点数'] - f1['到达点']:,} 个），合计 {f1['出行点数']:,} 个"
+      f"（占清洗点 {f1['占清洗点%']}%）；出发地只是「刚离开」，同样不是驻留，"
+      f"误标与否交给阶段2/3 复核；")
     A(f"- 速度 <0 或 >{config.ABNORMAL_SPEED} km/h 视为基站跳跃，置 NaN 不参与判定"
       f"（保留在表里供检查，不做删除）；")
     A(f"- 出行点速度中位 {f1['速度中位']:.1f} km/h、最大 {f1['速度最大']:.1f} km/h。")

@@ -12,7 +12,8 @@ tr_stage1.py —— 出行/驻留识别·阶段1：低频点标记 + 轨迹切�
   2. 轨迹切段（课时 32）：换用户或坐标一变就开新段，段内坐标相同，段间那条边就是潜在移动；
   3. 相邻点速度（课时 33）：groupby(imsi) 内取上一条坐标与时间，Haversine 距离 / 时间差；
      速度 <0 或 >ABNORMAL_SPEED 视为基站跳跃，置 NaN 而不是删行——该点的位置和时间仍有效；
-  4. 粗判：speed > SPEED_THRESHOLD 的点作为「疑似出行点」输出，交给阶段2 聚类。
+  4. 粗判：speed > SPEED_THRESHOLD 的到达点，加上它对应的出发点，一起作为「疑似出行点」
+     输出交给阶段2 聚类——一次移动由前后两个位置共同证明，只标终点会把出发地当成驻留。
 
 `python tr_stage1.py` 单独运行本模块（需先跑过 data_clean.py）。
 """
@@ -80,6 +81,27 @@ def compute_speed(df):
     return df
 
 
+def select_travel_points(df):
+    """课时 33/34 粗筛输出：一次移动的**出发点和到达点都算疑似出行**。
+
+    只标到达点等于宣布「出发地那条记录是驻留」，可人当时已经离开这个基站了；
+    信令点本身不含运动信息，一次移动是由「前一个位置 + 后一个位置」这一对点共同证明的。
+    这里仍只求召回，误标的点交给阶段2/3 判回驻留。
+    """
+    df = df.copy()
+    arrive = (df["speed"] > config.SPEED_THRESHOLD).to_numpy()
+    same_user_next = (df["imsi"] == df["imsi"].shift(-1)).fillna(False).to_numpy()
+    depart = np.zeros(len(df), dtype=bool)
+    depart[:-1] = arrive[1:]                      # 下一点是移动到达点，本点就是它的出发地
+    depart &= same_user_next                      # 不跨用户配对
+    df["is_travel_stage1"] = arrive | depart
+    log(f"速度粗筛（>{config.SPEED_THRESHOLD} km/h）：到达点 {int(arrive.sum()):,} 个"
+        f" ＋ 只作出发地的点 {int((depart & ~arrive).sum()):,} 个"
+        f" ＝ 疑似出行点 {int(df['is_travel_stage1'].sum()):,} 个，"
+        f"占本阶段 {len(df):,} 个点的 {df['is_travel_stage1'].mean() * 100:.1f}%")
+    return df
+
+
 def stage1_analysis(df=None):
     """执行阶段1，保存 stage1_travel_points.csv 并返回疑似出行点表。"""
     log_step(2, "阶段1：低频点标记 + 轨迹切段 + 速度粗筛")
@@ -93,14 +115,14 @@ def stage1_analysis(df=None):
     df = mark_low_freq(df)
     df = split_segments(df)
     df = compute_speed(df)
+    df = select_travel_points(df)
 
-    travel = df[df["speed"] > config.SPEED_THRESHOLD].copy()
-    log(f"速度粗筛（>{config.SPEED_THRESHOLD} km/h）：疑似出行点 {len(travel):,} 个，"
-        f"占本阶段 {len(df):,} 个点的 {len(travel) / max(len(df), 1) * 100:.1f}%")
+    travel = df[df["is_travel_stage1"]].copy()
     if len(travel):
+        fast = travel[travel["speed"].notna()]
         log("出行点速度分布：min %.2f ｜ 中位 %.2f ｜ 均值 %.2f ｜ max %.2f km/h"
-            % (travel["speed"].min(), travel["speed"].median(),
-               travel["speed"].mean(), travel["speed"].max()))
+            % (fast["speed"].min(), fast["speed"].median(),
+               fast["speed"].mean(), fast["speed"].max()))
 
     out_cols = ["imsi", "time", "lac_id", "cell_id", "lon", "lat", "speed"]
     out = travel[out_cols].copy()
