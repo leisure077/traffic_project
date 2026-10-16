@@ -140,6 +140,13 @@ def stage2_analysis(df=None):
     for c in ("lon", "lat"):
         df[c] = pd.to_numeric(df[c], errors="coerce")
     log(f"读入阶段1出行点: {len(df):,} 行, {df['imsi'].nunique()} 个用户")
+    # 空表要在进循环之前挡住：否则一路走到 pd.concat([]) 才炸，报的是
+    # "No objects to concatenate"，看不出是阶段1 没放行任何点。
+    if df.empty:
+        raise ValueError("阶段1 没有产出任何出行点，无法聚类。"
+                         f"阶段1 只放行相邻速度 > config.SPEED_THRESHOLD（当前 {config.SPEED_THRESHOLD} km/h）"
+                         f"的点，要么放宽它，要么确认 config.TARGET_DATE={config.TARGET_DATE} "
+                         "这天在清洗后还有数据。")
 
     np.random.seed(config.RANDOM_STATE)         # 课时 36：固定种子，簇结果可复现
     out_parts, chosen_ks, sses = [], [], []
