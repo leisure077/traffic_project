@@ -42,7 +42,9 @@ USER_COLORS = ["#9467bd", "#ff7f0e", "#1f77b4", "#8c564b", "#17becf"]
 
 
 def _save(fig, path):
-    fig.savefig(path)
+    # bbox_inches="tight" 与示例代码同款：既裁掉画布四周的空白，又保证贴到边界外的
+    # 图例（图1）不会被切掉一半。
+    fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
     log(f"  图已保存 {path}")
 
@@ -52,13 +54,24 @@ def _hour_of(series):
 
 
 def plot_stage3_pie(label_df):
-    """图1：驻留/出行占比饼图。"""
+    """图1：驻留/出行占比饼图。
+
+    排版按示例图：扇区不弹出，百分比写在扇区内，具体点数放在右侧图例里，
+    这样饼图本体不会被「驻留 13,000 点」这种长标签挤变形。
+    """
     stay = int((label_df["label"] == 0).sum())
     travel = int((label_df["label"] == 1).sum())
     fig, ax = plt.subplots(figsize=(6, 6))
-    ax.pie([stay, travel], labels=["驻留", "出行"], autopct="%1.1f%%",
-           colors=[GREEN, RED], startangle=90, explode=[0, 0.06])
-    ax.set_title(f"阶段3：出行/驻留占比（共 {stay + travel:,} 点）")
+    # 带 autopct 时 ax.pie 返回三元组（wedges, labels, percentages）
+    wedges, _, autotexts = ax.pie([stay, travel], autopct="%1.1f%%",
+                                  colors=[GREEN, RED], startangle=90,
+                                  wedgeprops={"edgecolor": "white", "linewidth": 1})
+    for t in autotexts:                                # 黑字压在深绿/深红上看不清
+        t.set_color("white")
+        t.set_fontsize(11)
+    ax.legend(wedges, [f"驻留（{stay:,} 点）", f"出行（{travel:,} 点）"],
+              loc="center left", bbox_to_anchor=(0.98, 0.5), frameon=False)
+    ax.set_title(f"出行 / 驻留标签分布（共 {stay + travel:,} 点）")
     _save(fig, config.FIG_STAGE3_PIE)
 
 
@@ -78,6 +91,8 @@ def plot_hour_line(label_df):
     fig, ax = plt.subplots(figsize=(11, 6.5))
     for start, end, name in config.PEAK_HOURS:         # 底纹只是标注，不参与判定
         ax.axvspan(start, end, color="#1f77b4", alpha=.10)
+    # 出行线下方淡红填充：示例图就有这块底，红线本身在 24 个点里不容易读面积
+    ax.fill_between(hours, travel.values, color=RED, alpha=.10)
     ax.plot(hours, stay.values, marker="o", color=GREEN, label="驻留点")
     ax.plot(hours, travel.values, marker="^", color=RED, label="出行点")
     ax.set_xlabel("小时")
@@ -98,8 +113,7 @@ def plot_hour_line(label_df):
                 arrowprops=dict(arrowstyle="->", color=RED, lw=1.2),
                 color=RED, fontsize=9)
 
-    fig.suptitle(f"24 小时出行 / 驻留点分布（同一坐标叠画：驻留量级约为出行的 "
-                 f"{stay.sum() / max(travel.sum(), 1):.0f} 倍）")
+    fig.suptitle("24 小时出行 / 驻留点分布")
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     _save(fig, config.FIG_HOUR_LINE)
 
@@ -114,6 +128,8 @@ def _plot_cat_bar(counts, order, colors, path, ylabel, title, total):
     ax.set_ylim(0, max(values) * 1.25)
     ax.set_ylabel(ylabel)
     ax.set_title(title)
+    ax.grid(axis="y", linestyle="--", alpha=.4)      # 示例图柱底有横向虚线网格
+    ax.set_axisbelow(True)
     _save(fig, path)
 
 
@@ -152,6 +168,9 @@ def plot_heatmap(heat_df):
     色标全表共用绝对刻度，不按行归一化：否则棋盘山（全天 79）会画得和太原街（13 万）一样红。
     数字只写深色格（>= 全表最大值一半），示例图就是这个画法；行尾不加「峰值 X」列，
     那列文字会把 xlim 撑出去、在矩阵右边拉出一条再没有内容的白边。
+
+    标题照示例图写「Top10商圈每小时人次热力图」，不带口径后缀；命中半径
+    config.HEATMAP_MATCH_THRESHOLD 米（当前 1000m，最近商圈）这条只在色标和这里说明。
     """
     heat_df = heat_df.sort_values("全天合计", ascending=False).head(HEATMAP_TOP)
     names = heat_df["biz_name"]
@@ -162,7 +181,7 @@ def plot_heatmap(heat_df):
     fig, ax = plt.subplots(figsize=(11.5, 1.45 * len(M) + 1.2))
     im = ax.imshow(values, aspect="auto", cmap="YlOrRd",
                    vmin=0, vmax=vmax)
-    ax.set_xticks(range(24), [f"{h}时" for h in range(24)], fontsize=8, rotation=60)
+    ax.set_xticks(range(24), [str(h) for h in range(24)], fontsize=8)
     ax.set_yticks(range(len(M)), names)
     for i, row in enumerate(values):
         for j, v in enumerate(row):
@@ -175,8 +194,7 @@ def plot_heatmap(heat_df):
     ax.set_ylim(len(M) - 0.5, -0.5)
     ax.set_xlabel("小时")
     ax.set_ylabel("商圈")
-    ax.set_title(f"商圈 × 24 小时人流热力（每小时命中人次，商圈 "
-                 f"{config.HEATMAP_MATCH_THRESHOLD}m 内）")
+    ax.set_title("Top10商圈每小时人次热力图")
     fig.colorbar(im, ax=ax, label="小时命中人次", pad=0.02)
     _save(fig, config.FIG_HEATMAP)
 
@@ -210,7 +228,7 @@ def plot_3d_traj(label_df):
     ax.set_xlabel("经度")
     ax.set_ylabel("纬度")
     ax.set_zlabel("时间(小时)")
-    ax.set_title(f"Top{len(top_users)} 用户 3D 时空轨迹（红三角=出行 / 绿圆点=驻留）")
+    ax.set_title(f"Top{len(top_users)}用户3D移动轨迹（经度-纬度-时间）")
     ax.legend(fontsize=8)
     ax.view_init(elev=25, azim=50)
     _save(fig, config.FIG_3D_TRAJ)
