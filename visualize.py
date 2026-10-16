@@ -3,7 +3,7 @@
 visualize.py —— 六张结果可视化（课时 55~56）
 
 入口 `visualize_all()`：一次读五张结果表（阶段3标签 / 阶段2簇 / 目的 / 方式 / 小时命中表），
-生成六张必交 PNG，外加三张附加 PNG。
+生成六张必交 PNG，外加两张附加 PNG。
 
   1 fig_stage3_pie    出行/驻留占比      —— 一天里移动点和停留点各占多少
   2 fig_hour_line     24 小时同轴叠画    —— 出行/驻留随时间如何变化（含早晚高峰底纹）
@@ -14,8 +14,6 @@ visualize.py —— 六张结果可视化（课时 55~56）
 
   + fig_stage2_clusters 某用户的簇划分 + 阶段3 判定 —— 六张必交图里唯一没覆盖的
     「阶段2 到底做了什么」，讲义未要求，作为附加图补上
-  + fig_heatmap_compare 图5 两种口径（每小时人次 vs 最挤的 10 分钟窗口）上下对照，
-    答辩被问「为什么你的热力图和示例不是一个量级」时直接翻这张
   + fig_dashboard       上述 6 张拼成的 3×2 总览，答辩用一张图讲完
 
 两个反复用到的画图规矩：
@@ -201,59 +199,6 @@ def plot_heatmap(heat_df):
     _save(fig, config.FIG_HEATMAP)
 
 
-def plot_heatmap_compare(heat_df, window_file):
-    """附加图：图5 的两种口径上下同框对照（图5 本体不动）。
-
-    上格＝图5 现用口径「每小时命中人次」（heat_hourly.csv，在滑动窗口之前数的）；
-    下格＝老师示例代码的取法：从 heatmap_result.csv 按 (商圈, 小时) 取 `.max()`，
-    也就是该小时里最挤的那一个 10 分钟窗口。
-
-    两格**共用一条色标**：这张图要说的就是量级差，各自归一化会把两格都画满红，
-    对照就废了。代价是下格整体偏淡——那正是它只数了 1/6 小时的直观样子。
-    """
-    win = read_csv(window_file)
-    # read_csv 默认 dtype=str（护住 imsi），这里不转回数字的话，
-    # groupby.max() 会按字符串比大小，"998" 会赢过 "1318"。
-    win["count"] = pd.to_numeric(win["count"], errors="coerce")
-    win["hour"] = pd.to_datetime(win["time"]).dt.hour
-    peak = (win.groupby(["biz_name", "hour"])["count"].max().unstack(fill_value=0)
-            .reindex(columns=range(24), fill_value=0))
-
-    cols = [str(h) for h in range(24)]
-    names = list(heat_df["biz_name"])
-    A = heat_df.set_index("biz_name").reindex(names)[cols].to_numpy(dtype=float)
-    B = peak.reindex(names).fillna(0).to_numpy(dtype=float)
-    vmax = max(A.max(), B.max())
-    ratio = A.max() / max(B.max(), 1)
-    rs = [pd.Series(a).corr(pd.Series(b)) for a, b in zip(A, B)]
-    rmin = min(r for r in rs if pd.notna(r))
-
-    fig, axes = plt.subplots(2, 1, figsize=(13, 1.45 * len(names) * 2 + 3.0),
-                             sharex=True, sharey=True)
-    for ax, M, sub in zip(axes, (A, B),
-                          (f"每小时命中人次（图5 现用口径，全天 {int(A.sum()):,} 人次，"
-                           f"单格最高 {int(A.max()):,}）",
-                           f"该小时最挤的 10 分钟窗口（示例代码 .max() 口径，全天 {int(B.sum()):,} "
-                           f"人次，单格最高 {int(B.max()):,}）")):
-        im = ax.imshow(M, aspect="auto", cmap="YlOrRd", vmin=0, vmax=vmax)
-        own = M.max()
-        for i, row in enumerate(M):
-            for j, v in enumerate(row):
-                if v >= own * HEATMAP_LABEL_RATIO:
-                    ax.text(j, i, int(v), ha="center", va="center", fontsize=7.5,
-                            color="white" if v >= vmax * 0.6 else "black")
-        ax.set_title(sub, fontsize=10, loc="left")
-    fig.colorbar(im, ax=axes, label="人次（两格同一把尺）", pad=0.02)
-    axes[1].set_xticks(range(24), [str(h) for h in range(24)], fontsize=8)
-    axes[0].set_yticks(range(len(names)), names)
-    axes[1].set_xlabel("小时")
-    for ax in axes:
-        ax.set_ylim(len(names) - 0.5, -0.5)
-    fig.suptitle(f"同一批流数据、两种口径：逐时形状一致（r≥{rmin:.2f}），"
-                 f"峰值差 {ratio:.1f} 倍")
-    _save(fig, config.FIG_HEAT_COMPARE)
-
-
 def plot_3d_traj(label_df):
     """图6：Top5 用户 3D 时空轨迹。x/y 是位置、z 是时间，驻留表现为垂直上升的柱。
 
@@ -407,8 +352,8 @@ def build_dashboard():
 
 
 def visualize_all():
-    """读结果表，生成六张必交图 + 三张附加图；单张图失败只警告，不影响其他图。"""
-    log_step(8, "可视化（6 张图 + 3 张附加图）")
+    """读四张结果表，生成六张必交图 + 两张附加图；单张图失败只警告，不影响其他图。"""
+    log_step(8, "可视化（6 张图 + 2 张附加图）")
     setup_zh()
 
     label_df = read_csv(config.STAGE3_LABEL_FILE,
@@ -429,8 +374,7 @@ def visualize_all():
             ("出行方式柱状", plot_mode_bar, (mode_df,)),
             ("商圈热力矩阵", plot_heatmap, (heat_df,)),
             ("Top5 3D 轨迹", plot_3d_traj, (label_df,)),
-            ("阶段2簇划分", plot_stage2_clusters, (cluster_df, label_df)),
-            ("图5两种口径对照", plot_heatmap_compare, (heat_df, config.HEATMAP_RESULT_FILE))]
+            ("阶段2簇划分", plot_stage2_clusters, (cluster_df, label_df))]
     for name, fn, args in jobs:
         try:
             if any(len(a) == 0 for a in args):
